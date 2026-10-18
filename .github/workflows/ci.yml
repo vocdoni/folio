@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PANDOC_VERSION: "3.12.1"
+  PANDOC_SHA256: "d0c90410e90204c9ca83b8539fac5c7aed01fd537207e4585849f8abc5df20b8"
+  TYPST_VERSION: "0.15.1"
+  TYPST_SHA256: "a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c"
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          set -euo pipefail
+          curl -fsSL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --no-banner --exit-code 1 .
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          install-mode: goinstall # built with the job's Go toolchain (the module targets Go 1.27)
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: pinned pandoc and typst
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tools"
+          cd "$RUNNER_TEMP/tools"
+          curl -fsSL -o pandoc.tar.gz "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-amd64.tar.gz"
+          echo "${PANDOC_SHA256}  pandoc.tar.gz" | sha256sum --check -
+          tar -xzf pandoc.tar.gz --strip-components=2 "pandoc-${PANDOC_VERSION}/bin/pandoc"
+          curl -fsSL -o typst.tar.xz "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz"
+          echo "${TYPST_SHA256}  typst.tar.xz" | sha256sum --check -
+          tar -xJf typst.tar.xz --strip-components=1 typst-x86_64-unknown-linux-musl/typst
+          echo "FOLIO_PANDOC=$RUNNER_TEMP/tools/pandoc" >> "$GITHUB_ENV"
+          echo "FOLIO_TYPST=$RUNNER_TEMP/tools/typst" >> "$GITHUB_ENV"
+          ./pandoc --version | head -1
+          ./typst --version
+      - name: go vet
+        run: go vet ./...
+      - name: go test -race
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./...
+      - name: go test (static, covers RLIMIT_AS)
+        env:
+          CGO_ENABLED: "0"
+        run: go test -count=1 ./internal/sandbox/ ./internal/render/
+      - name: build (static)
+        env:
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o "$RUNNER_TEMP/folio" ./cmd/folio
