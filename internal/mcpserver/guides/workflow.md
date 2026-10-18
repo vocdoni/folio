@@ -23,7 +23,9 @@ does not calculate, round or check them, so get them right before rendering.
      (see `get_guide('components')`);
    - `body_skeleton`: start your Markdown from it;
    - `sample`: a complete, valid example of markdown, metadata and data.
-3. If the document has images, upload each once with `upload_asset` and
+3. If the document has images, upload each once with `upload_asset` (give it
+   a meaningful `name`; fix a wrong name or description later with
+   `update_asset`, never by re-uploading) and
    reference it as `![Caption](asset:<asset_id>)`. Reuse ids from
    `list_assets` instead of uploading twice.
 4. Write the Markdown (see `get_guide('markdown')`), the metadata and the
@@ -161,6 +163,6 @@ template and document on the instance; the audit log records who did what.
 `get_guide`, `get_capabilities`, `list_brands`, `get_brand`, `create_brand`,
 `update_brand`, `archive_brand`, `list_templates`, `get_template`,
 `create_template`, `update_template`, `archive_template`, `preview_template`,
-`upload_asset`, `list_assets`, `delete_asset`, `validate_document`,
-`render_document`, `list_documents`, `get_document`, `review_document`,
-`publish_document`, `delete_document`, `restore_document`.
+`upload_asset`, `list_assets`, `update_asset`, `delete_asset`,
+`validate_document`, `render_document`, `list_documents`, `get_document`,
+`review_document`, `publish_document`, `delete_document`, `restore_document`.

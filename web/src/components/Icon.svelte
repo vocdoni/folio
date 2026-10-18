@@ -5,6 +5,7 @@
     download: 'M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14',
     upload: 'M12 19V8m0 0-4.5 4.5M12 8l4.5 4.5M5 5h14',
     trash: 'M5 7h14M10 7V5h4v2m-7 0 1 12h8l1-12',
+    edit: 'M5 19l1-4L16 5l3 3L9 18l-4 1zM14 7l3 3',
     restore: 'M4 12a8 8 0 1 0 2.3-5.7M4 4v4h4',
     check: 'M5 12.5 10 17l9-10',
     plus: 'M12 5v14M5 12h14',

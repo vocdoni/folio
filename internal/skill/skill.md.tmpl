@@ -26,8 +26,8 @@ instead of formatting the document yourself.
 1. `list_templates` and pick the template that fits (ask when several fit).
 2. `get_template(id)`: read `sections`, `metadata_schema`, `data_schema`,
    `components`, `body_skeleton` and `sample`.
-3. `upload_asset` each image once and reference it as
-   `![Caption](asset:<asset_id>)`.
+3. `upload_asset` each image once (with a meaningful name; `update_asset`
+   renames it later) and reference it as `![Caption](asset:<asset_id>)`.
 4. Write the Markdown from `body_skeleton`; put every figure in `data` as a
    string written exactly as it should appear, including the budget's
    `totals` rows.

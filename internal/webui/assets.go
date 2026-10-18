@@ -20,6 +20,7 @@ func (s *Server) assetRoutes(mux *http.ServeMux) {
 	s.api(mux, "GET /ui/api/assets", route{}, s.handleListAssets)
 	s.api(mux, "POST /ui/api/assets", route{action: "ui.asset.upload", kind: "asset"}, s.handleUploadAsset)
 	s.api(mux, "GET /ui/api/assets/{id}/content", route{}, s.handleAssetContent)
+	s.api(mux, "PATCH /ui/api/assets/{id}", route{action: "ui.asset.update", kind: "asset"}, s.handleUpdateAsset)
 	s.api(mux, "DELETE /ui/api/assets/{id}", route{action: "ui.asset.delete", kind: "asset"}, s.handleDeleteAsset)
 }
 
@@ -150,6 +151,29 @@ func extOf(m string) string {
 		return ".jpg"
 	}
 	return ".png"
+}
+
+// AssetUpdateIn is the PATCH body: the new name and description (an empty
+// description clears it).
+type AssetUpdateIn struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (s *Server) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
+	var in AssetUpdateIn
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	id := r.PathValue("id")
+	noteActivity(r, id, activity.Detail{})
+	a, err := s.o.Assets.Update(r.Context(), Actor, id, in.Name, in.Description)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, assetOut(*a))
 }
 
 func (s *Server) handleDeleteAsset(w http.ResponseWriter, r *http.Request) {

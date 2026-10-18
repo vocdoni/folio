@@ -46,6 +46,8 @@ An image alone in its paragraph becomes a figure with the caption below it.
 Any other target (`https://…`, a file name, `data:`) is rejected with
 `invalid_image_target`; an unknown or deleted asset gives `missing_asset`.
 DOCX output receives a PNG rendition of SVG images automatically.
+To fix an image's name or description (alt text) without changing its id, use
+`update_asset`.
 
 ## Links
 

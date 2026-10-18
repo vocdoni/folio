@@ -266,7 +266,7 @@ func TestToolSurface(t *testing.T) {
 	readOnlyTools := []string{"get_guide", "get_capabilities", "list_brands", "get_brand", "list_templates", "get_template",
 		"list_assets", "validate_document", "list_documents", "get_document"}
 	destructiveTools := []string{"delete_asset", "delete_document"}
-	idempotentWrites := []string{"archive_brand", "archive_template", "preview_template", "review_document", "publish_document"}
+	idempotentWrites := []string{"archive_brand", "archive_template", "preview_template", "review_document", "publish_document", "update_asset"}
 	writes := []string{"create_brand", "update_brand", "create_template", "update_template", "upload_asset", "render_document", "restore_document"}
 	var names []string
 	for _, tl := range res.Tools {
