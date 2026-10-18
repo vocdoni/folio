@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"sync"
@@ -293,7 +294,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 			return nil, err
 		}
 		rewriteImages(docxDoc, assets, true)
-		autofitDOCXTables(docxDoc)
+		autofitDOCXTables(docxDoc, opts.PageSize)
 		docxDoc.Blocks = append(docxFront(meta, labels, opts), docxDoc.Blocks...)
 		ref, err := p.referenceDOCX(req.Brand, logo, opts.PageSize, labels["page"])
 		if err != nil {
@@ -421,10 +422,69 @@ func docxFront(meta map[string]any, labels map[string]string, opts model.LayoutO
 	return out
 }
 
-// autofitDOCXTables gives tables without explicit widths relative widths
-// proportional to their longest cell text (clamped), so DOCX consumers that
-// do not autofit (LibreOffice, Google Docs) do not break words mid-column.
-func autofitDOCXTables(doc *pandocast.Document) {
+// DOCX column sizing. Pandoc writes tables with explicit widths as a fixed
+// layout, so the widths must already fit the content: consumers do not autofit.
+const (
+	// docxTextRunes is a conservative estimate of the text width, in body-size
+	// runes, of an A4 page with 20 mm margins (170 mm).
+	docxTextRunes = 80
+	// docxShortColumn is the longest cell text, in runes, of a short column
+	// (numbers, money, dates, units). Short columns always get their full need.
+	docxShortColumn = 16
+	// docxCellPadding is the cell padding, in runes, added to every need.
+	docxCellPadding = 3
+	// docxStrongFactor weights bold text, which is wider than regular text.
+	docxStrongFactor = 1.1
+	// docxMinLongShare is the smallest share of the width left for long
+	// columns; below it every column is sized proportionally to its need.
+	docxMinLongShare = 0.25
+)
+
+// docxTextWidthRunes scales docxTextRunes to the page: Letter minus 20 mm
+// margins is 175.9 mm wide.
+func docxTextWidthRunes(pageSize string) int {
+	if pageSize == "letter" {
+		return docxTextRunes * 1759 / 1700
+	}
+	return docxTextRunes
+}
+
+// cellRunes is the width of a cell's text in runes, bold text weighted by
+// docxStrongFactor.
+func cellRunes(blocks []pandocast.Block) float64 {
+	var n float64
+	for _, blk := range blocks {
+		var ins []pandocast.Inline
+		switch x := blk.(type) {
+		case *pandocast.Plain:
+			ins = x.Inlines
+		case *pandocast.Para:
+			ins = x.Inlines
+		default:
+			continue
+		}
+		n += float64(len([]rune(pandocast.Stringify(ins))))
+		pandocast.Walk([]pandocast.Block{&pandocast.Plain{Inlines: ins}}, pandocast.Visitor{Inline: func(in pandocast.Inline, _ int) bool {
+			if st, ok := in.(*pandocast.Strong); ok {
+				n += (docxStrongFactor - 1) * float64(len([]rune(pandocast.Stringify(st.Inlines))))
+				return false
+			}
+			return true
+		}})
+	}
+	return n
+}
+
+// autofitDOCXTables sizes the columns of tables without explicit widths the
+// way an autofit layout would. Each column needs its longest cell text (head,
+// body and foot; spanning cells are ignored) plus padding. Short columns get
+// exactly their need, so numbers and money never wrap; long text columns
+// share the remaining width in proportion to their clamped length. When that
+// remainder would be under docxMinLongShare (or every column is short),
+// widths are proportional to need, which still gives every column its need
+// whenever the needs fit the page.
+func autofitDOCXTables(doc *pandocast.Document, pageSize string) {
+	avail := float64(docxTextWidthRunes(pageSize))
 	pandocast.Walk(doc.Blocks, pandocast.Visitor{Block: func(b pandocast.Block, _ int) bool {
 		t, ok := b.(*pandocast.Table)
 		if !ok || len(t.ColSpecs) == 0 {
@@ -444,27 +504,38 @@ func autofitDOCXTables(doc *pandocast.Document) {
 			col := 0
 			for _, c := range r.Cells {
 				if c.ColSpan == 1 && col < len(longest) {
-					n := 0
-					for _, blk := range c.Blocks {
-						switch x := blk.(type) {
-						case *pandocast.Plain:
-							n += len([]rune(pandocast.Stringify(x.Inlines)))
-						case *pandocast.Para:
-							n += len([]rune(pandocast.Stringify(x.Inlines)))
-						}
-					}
-					longest[col] = max(longest[col], n)
+					longest[col] = max(longest[col], int(math.Ceil(cellRunes(c.Blocks))))
 				}
 				col += max(c.ColSpan, 1)
 			}
 		}
-		total := 0
-		for i := range longest {
-			longest[i] = min(max(longest[i], 6), 40)
-			total += longest[i]
+		need := make([]float64, len(longest))
+		var needSum, shortShare, longWeight float64
+		for i, l := range longest {
+			need[i] = float64(l + docxCellPadding)
+			needSum += need[i]
+			if l <= docxShortColumn {
+				shortShare += need[i] / avail
+			} else {
+				longWeight += float64(min(max(l, 6), 40))
+			}
+		}
+		widths := make([]float64, len(longest))
+		if remainder := 1 - shortShare; longWeight > 0 && remainder >= docxMinLongShare {
+			for i, l := range longest {
+				if l <= docxShortColumn {
+					widths[i] = need[i] / avail
+				} else {
+					widths[i] = remainder * float64(min(max(l, 6), 40)) / longWeight
+				}
+			}
+		} else {
+			for i := range need {
+				widths[i] = need[i] / needSum
+			}
 		}
 		for i := range t.ColSpecs {
-			t.ColSpecs[i].Width = json.Number(strconv.FormatFloat(float64(longest[i])/float64(total), 'f', 4, 64))
+			t.ColSpecs[i].Width = json.Number(strconv.FormatFloat(widths[i], 'f', 4, 64))
 		}
 		return true
 	}})

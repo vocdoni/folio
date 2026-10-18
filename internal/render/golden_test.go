@@ -9,8 +9,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"flag"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -240,5 +242,106 @@ func TestStarterProposalDOCXFrontMatterAndTableWidths(t *testing.T) {
 	}
 	if unequal == 0 {
 		t.Fatal("no table with content-proportional column widths")
+	}
+	checkShortColumnsFit(t, body)
+}
+
+// DOCX table structure, enough to measure column text (namespaces are matched
+// by local name).
+type docxTable struct {
+	Grid []struct {
+		W int `xml:"w,attr"`
+	} `xml:"tblGrid>gridCol"`
+	Rows []struct {
+		Cells []struct {
+			Span *struct {
+				Val int `xml:"val,attr"`
+			} `xml:"tcPr>gridSpan"`
+			Paras []struct {
+				Runs []struct {
+					Bold *struct{} `xml:"rPr>b"`
+					Text []string  `xml:"t"`
+				} `xml:"r"`
+			} `xml:"p"`
+		} `xml:"tc"`
+	} `xml:"tr"`
+}
+
+// checkShortColumnsFit asserts that every short column (longest text of at
+// most 16 runes: numbers, money, dates, units) is at least as wide as its
+// need: longest text (bold ×1.1, rounded up) plus 3 runes of padding, at 80
+// runes per full A4 text width (the sum of the grid). Such cells never wrap.
+func checkShortColumnsFit(t *testing.T, body string) {
+	t.Helper()
+	const avail, short, padding = 80.0, 16, 3
+	dec := xml.NewDecoder(strings.NewReader(body))
+	tables := 0
+	for {
+		tok, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok || se.Name.Local != "tbl" {
+			continue
+		}
+		var tbl docxTable
+		if err := dec.DecodeElement(&tbl, &se); err != nil {
+			t.Fatal(err)
+		}
+		tables++
+		gridSum := 0
+		for _, g := range tbl.Grid {
+			gridSum += g.W
+		}
+		longest := make([]int, len(tbl.Grid))
+		texts := make([]string, len(tbl.Grid))
+		for _, r := range tbl.Rows {
+			col := 0
+			for _, c := range r.Cells {
+				span := 1
+				if c.Span != nil && c.Span.Val > 1 {
+					span = c.Span.Val
+				}
+				if span == 1 && col < len(longest) {
+					var n float64
+					var text strings.Builder
+					for pi, p := range c.Paras {
+						if pi > 0 {
+							text.WriteString(" ")
+						}
+						for _, run := range p.Runs {
+							s := strings.Join(run.Text, "")
+							text.WriteString(s)
+							w := 1.0
+							if run.Bold != nil {
+								w = 1.1
+							}
+							n += w * float64(len([]rune(s)))
+						}
+					}
+					if l := int(math.Ceil(n - 1e-9)); l > longest[col] {
+						longest[col], texts[col] = l, text.String()
+					}
+				}
+				col += span
+			}
+		}
+		runeTwips := float64(gridSum) / avail
+		for i, l := range longest {
+			if l == 0 || l > short {
+				continue
+			}
+			need := float64(l+padding) * runeTwips
+			if float64(tbl.Grid[i].W) < need-2 {
+				t.Errorf("table %d column %d (%q): %d twips < need %.0f twips (%d runes + %d padding)", tables, i, texts[i], tbl.Grid[i].W, need, l, padding)
+			}
+		}
+	}
+	if tables == 0 {
+		t.Fatal("no tables measured")
 	}
 }
