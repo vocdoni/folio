@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Command folio is the Folio document service. P1 provides the `render`,
-// `sandbox-exec` and `version` subcommands; `serve` arrives with the MCP layer.
+// Command folio is the Folio document service: `serve` (default) runs the MCP
+// service, `render` renders offline from a JSON request, `sandbox-exec` is the
+// internal sandbox helper and `version` prints the version.
 package main
 
 import (
@@ -26,7 +27,7 @@ commands:
   render        render a document from a JSON request file (no database)
   version       print the version
   sandbox-exec  internal: run a tool under rlimits and Landlock
-  serve         run the MCP service (not available in this build)
+  serve         run the MCP service (default; configured with FOLIO_* variables)
 `)
 }
 
@@ -44,8 +45,7 @@ func main() {
 	case "version":
 		fmt.Println("folio", version())
 	case "serve":
-		fmt.Fprintln(os.Stderr, "folio: serve is not available in this build yet; use `folio render`")
-		os.Exit(2)
+		os.Exit(serveCmd(args))
 	case "-h", "--help", "help":
 		usage()
 	default:
