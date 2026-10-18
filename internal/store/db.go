@@ -19,7 +19,8 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" driver (pure Go)
+	"modernc.org/sqlite" // registers the "sqlite" driver (pure Go)
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 //go:embed migrations/*.sql
@@ -47,7 +48,10 @@ func dsn(path string, readOnly bool) string {
 	} else {
 		q.Set("_txlock", "immediate")
 	}
-	return "file:" + path + "?" + q.Encode()
+	// The driver splits its own parameters at the first '?' and SQLite then
+	// parses the whole string as a file: URI, percent-decoding the path, so
+	// the path is escaped ('?', '#', '%' and spaces become %XX).
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + q.Encode()
 }
 
 // Open creates dataDir if needed, opens dataDir/folio.db and applies pending
@@ -64,7 +68,7 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 	w.SetMaxOpenConns(1)
 	w.SetMaxIdleConns(1)
 	w.SetConnMaxLifetime(0)
-	if err := migrate(ctx, w); err != nil {
+	if err := migrateRetry(ctx, w); err != nil {
 		_ = w.Close()
 		return nil, err
 	}
@@ -141,26 +145,61 @@ func SchemaVersion() int {
 	return len(ms)
 }
 
+// busyRetryWindow bounds how long Open retries an immediate SQLITE_BUSY
+// (the same budget as busy_timeout).
+const busyRetryWindow = 5 * time.Second
+
+// migrateRetry runs migrate, retrying while SQLite reports SQLITE_BUSY.
+// Switching a brand-new database file to WAL (the journal_mode pragma run when
+// the writer connection opens) needs an exclusive lock, and SQLite returns
+// SQLITE_BUSY at once instead of calling the busy handler when another
+// connection is doing the same, so concurrent first opens can fail
+// spuriously. migrate is safe to retry: it decides what to apply inside its
+// IMMEDIATE transaction and rolls back on any error.
+func migrateRetry(ctx context.Context, w *sql.DB) error {
+	deadline := time.Now().Add(busyRetryWindow)
+	for {
+		err := migrate(ctx, w)
+		if err == nil || !isBusy(err) || time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("store: open: %w", ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// isBusy reports whether err is SQLITE_BUSY (any extended variant).
+func isBusy(err error) bool {
+	var se *sqlite.Error
+	return errors.As(err, &se) && se.Code()&0xff == sqlite3.SQLITE_BUSY
+}
+
 func migrate(ctx context.Context, w *sql.DB) error {
 	ms, err := loadMigrations()
 	if err != nil {
 		return err
 	}
+	// The version is read inside the IMMEDIATE transaction (the writer DSN
+	// sets _txlock=immediate), so concurrent openers of a fresh database
+	// serialise here and only the first one applies the migrations.
+	tx, err := w.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
 	var cur int
-	if err := w.QueryRowContext(ctx, "PRAGMA user_version").Scan(&cur); err != nil {
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&cur); err != nil {
 		return fmt.Errorf("store: read user_version: %w", err)
 	}
 	if cur > len(ms) {
 		return fmt.Errorf("%w: database at v%d, binary knows v%d", ErrSchemaTooNew, cur, len(ms))
 	}
 	if cur == len(ms) {
-		return nil
+		return nil // up to date; the deferred rollback ends the empty transaction
 	}
-	tx, err := w.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("store: begin migration: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	for _, m := range ms[cur:] {
 		if _, err := tx.ExecContext(ctx, m.sql); err != nil {
 			return fmt.Errorf("store: apply %s: %w", m.name, err)

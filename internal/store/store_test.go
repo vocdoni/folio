@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -208,5 +209,71 @@ func TestSecurityBlobGCConcurrentWithRenders(t *testing.T) {
 		if _, err := b.Get(k); err != nil {
 			t.Fatalf("committed blob %s missing: %v", k, err)
 		}
+	}
+}
+
+// TestOpenConcurrentFreshDir: concurrent Open calls on a new data dir
+// serialise on the first migration instead of failing.
+func TestOpenConcurrentFreshDir(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	const n = 4
+	dbs := make([]*DB, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			dbs[i], errs[i] = Open(ctx, dir)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("Open #%d: %v", i, err)
+			continue
+		}
+		var v int
+		if err := dbs[i].R.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v); err != nil || v != SchemaVersion() {
+			t.Errorf("Open #%d: user_version = %d (%v), want %d", i, v, err, SchemaVersion())
+		}
+		_ = dbs[i].Close()
+	}
+}
+
+// TestOpenPathWithURIMetacharacters: the database path is escaped in the
+// SQLite URI, so '?', '#', '%' and spaces in the data dir work.
+func TestOpenPathWithURIMetacharacters(t *testing.T) {
+	ctx := context.Background()
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "a?b#c %d")
+	db, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.W.ExecContext(ctx, `INSERT INTO meta (key, value) VALUES ('k', 'v')`); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := db.R.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'k'`).Scan(&got); err != nil || got != "v" {
+		t.Fatalf("reader got %q, %v", got, err)
+	}
+	var mode string
+	if err := db.R.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil || mode != "wal" {
+		t.Fatalf("journal_mode = %q (%v): DSN parameters lost", mode, err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "folio.db")); err != nil {
+		t.Fatalf("database not at the requested path: %v", err)
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("stray files next to the data dir: %v", entries)
 	}
 }
