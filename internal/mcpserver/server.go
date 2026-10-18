@@ -20,6 +20,8 @@ func New(d *Deps) *mcp.Server {
 		Logger:       d.Logger,
 		Capabilities: &mcp.ServerCapabilities{}, // tools, resources and prompts are inferred; no logging capability
 	})
+	registerCatalogTools(s, d)
+	registerAssetTools(s, d)
 	return s
 }
 
