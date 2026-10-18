@@ -172,6 +172,15 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_OPENROUTER_API_KEY` | — | enables the optional AI reviewer |
 | `FOLIO_REVIEW_MODEL` | `google/gemma-4-31b-it` | OpenRouter model used by the reviewer |
 | `FOLIO_REVIEW_MAX_PAGES` | `20` | pages per review call |
+| `FOLIO_OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API root; change it only for tests or an outbound proxy |
+| `FOLIO_UI_PASSWORD` | — | enables the [web UI](#web-ui) at `/ui` (at least 12 characters); unset, `/ui` returns 404 |
+| `FOLIO_UI_SESSION_TTL` | `12h` | web UI sessions expire after this much inactivity |
+| `FOLIO_UI_PREVIEW_CONCURRENCY` | `1` | render slots for web UI previews and example-file conversion (separate from `FOLIO_RENDER_CONCURRENCY`) |
+| `FOLIO_TRUSTED_PROXIES` | private and loopback ranges | comma-separated CIDRs whose `X-Forwarded-For` is trusted for login rate limiting; `none` trusts no proxy |
+| `FOLIO_ACTIVITY_RETENTION` | `720h` | activity feed entries older than this are deleted |
+| `FOLIO_AI_MODEL` | `FOLIO_REVIEW_MODEL` | OpenRouter model for the web UI assistants (vision-capable for PDF examples and logos) |
+| `FOLIO_AI_DAILY_CALLS` | `200` | web UI assistant jobs per UTC day for the whole instance |
+| `FOLIO_AI_SESSION_CALLS` | `30` | web UI assistant jobs per signed-in session per hour |
 | `FOLIO_PANDOC`, `FOLIO_TYPST` | found on `PATH` | paths of the pandoc and typst binaries (the image ships both) |
 
 Sizes accept `KiB`, `MiB`, `GiB` or a byte count; durations are Go

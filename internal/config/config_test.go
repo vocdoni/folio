@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -76,5 +77,56 @@ func TestPortAndSizes(t *testing.T) {
 	}
 	if c.Addr != ":9000" || c.RenderMemory != 512<<20 || c.MaxAssetBytes != 1<<20 {
 		t.Fatalf("%+v", c)
+	}
+}
+
+func TestWebUIAndAIDefaults(t *testing.T) {
+	c, err := Load(env(map[string]string{"FOLIO_REVIEW_MODEL": "vendor/model-a"}), ModeRender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.UIEnabled() || c.UISessionTTL != 12*time.Hour || c.UIPreviewConcurrency != 1 || c.ActivityRetention != 720*time.Hour ||
+		c.AIModel != "vendor/model-a" || c.AIDailyCalls != 200 || c.AISessionCalls != 30 ||
+		c.OpenRouterBaseURL != "https://openrouter.ai/api/v1" || len(c.TrustedProxies) != len(DefaultTrustedProxies) {
+		t.Fatalf("defaults: %+v", c)
+	}
+	if !c.TrustedProxies[0].Contains(netip.MustParseAddr("10.1.2.3")) {
+		t.Fatal("private ranges must be trusted by default")
+	}
+}
+
+func TestWebUIVariables(t *testing.T) {
+	const pw = "correct horse battery"
+	c, err := Load(env(map[string]string{"FOLIO_UI_PASSWORD": pw, "FOLIO_UI_SESSION_TTL": "30m", "FOLIO_AI_MODEL": "vendor/model-b",
+		"FOLIO_TRUSTED_PROXIES": "10.0.0.0/8, 2001:db8::1", "FOLIO_OPENROUTER_BASE_URL": "http://stub:8181/api/v1/",
+		"FOLIO_AI_DAILY_CALLS": "5", "FOLIO_AI_SESSION_CALLS": "2", "FOLIO_UI_PREVIEW_CONCURRENCY": "2", "FOLIO_ACTIVITY_RETENTION": "48h"}), ModeRender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.UIEnabled() || string(c.UIPassword) != pw || c.UISessionTTL != 30*time.Minute || c.AIModel != "vendor/model-b" ||
+		c.OpenRouterBaseURL != "http://stub:8181/api/v1" || c.AIDailyCalls != 5 || c.AISessionCalls != 2 ||
+		c.UIPreviewConcurrency != 2 || c.ActivityRetention != 48*time.Hour || len(c.TrustedProxies) != 2 ||
+		c.TrustedProxies[1] != netip.MustParsePrefix("2001:db8::1/128") {
+		t.Fatalf("%+v", c)
+	}
+	for _, s := range []string{fmt.Sprint(c.UIPassword), fmt.Sprintf("%v %+v %#v", *c, *c, c.UIPassword)} {
+		if strings.Contains(s, pw) {
+			t.Fatal("the UI password was printed")
+		}
+	}
+	for name, m := range map[string]map[string]string{
+		"short password": {"FOLIO_UI_PASSWORD": "short"},
+		"bad proxies":    {"FOLIO_TRUSTED_PROXIES": "10.0.0.0/8,banana"},
+		"bad base url":   {"FOLIO_OPENROUTER_BASE_URL": "openrouter.ai"},
+		"creds in url":   {"FOLIO_OPENROUTER_BASE_URL": "https://u:p@openrouter.ai/api/v1"},
+		"zero ttl":       {"FOLIO_UI_SESSION_TTL": "0s"},
+	} {
+		if _, err := Load(env(m), ModeRender); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	c, err = Load(env(map[string]string{"FOLIO_TRUSTED_PROXIES": "none"}), ModeRender)
+	if err != nil || len(c.TrustedProxies) != 0 {
+		t.Fatalf("none: %v %v", c.TrustedProxies, err)
 	}
 }
