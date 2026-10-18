@@ -19,7 +19,7 @@ import (
 // ---- get_guide / get_capabilities ----
 
 type GuideIn struct {
-	Topic string `json:"topic,omitempty" jsonschema:"workflow, markdown, components, templates, typst-layouts, brands or troubleshooting; omit for the index"`
+	Topic string `json:"topic,omitempty" jsonschema:"workflow, recipes, markdown, components, templates, typst-layouts, brands or troubleshooting; omit for the index"`
 }
 
 type GuideOut struct {
@@ -252,7 +252,7 @@ func templateSummary(it *catalog.Item) TemplateSummary {
 }
 
 const (
-	descGetGuide = `Read Folio's authoring guides (Markdown). Call with no topic for the index. Topics: workflow (tool sequence, revising, publishing), markdown (supported syntax, images, links), components (budget, milestones, deliverables, signatures, info and their data), templates (spec fields, schemas, sections, samples), typst-layouts (custom layout contract), brands (colors, fonts, logos), troubleshooting (every error and finding code with the fix). Read templates, typst-layouts and brands before create_template or create_brand.`
+	descGetGuide = `Read Folio's authoring guides (Markdown). Call with no topic for the index. Topics: workflow (tool sequence, revising, publishing), recipes (proposal, quote, statement of work, revising a colleague's document, new brand and template), markdown (supported syntax, images, links), components (budget, milestones, deliverables, signatures, info and their data), templates (spec fields, schemas, sections, samples), typst-layouts (custom layout contract), brands (colors, fonts, logos), troubleshooting (every error and finding code with the fix). Read templates, typst-layouts and brands before create_template or create_brand.`
 
 	descCapabilities = `Report what this Folio instance supports: version, output formats, built-in languages, base layouts with the layout.options schema, components with their data schemas, brand fonts, vendored typst packages, template label keys, limits (sizes, pages, timeouts, retention), whether the AI reviewer is enabled and the sandbox level. Call it once before authoring templates or brands.`
 
