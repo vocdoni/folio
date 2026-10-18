@@ -16,7 +16,7 @@ import (
 var guideFS embed.FS
 
 // Topics lists the guides in reading order.
-var Topics = []string{"workflow", "markdown", "components", "templates", "typst-layouts", "brands", "troubleshooting"}
+var Topics = []string{"workflow", "recipes", "markdown", "components", "templates", "typst-layouts", "brands", "troubleshooting"}
 
 // Guide returns the Markdown of a topic.
 func Guide(topic string) (string, bool) {
