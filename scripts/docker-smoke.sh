@@ -13,6 +13,8 @@
 #    folio, folio runs as uid 47100 without capabilities and with
 #    no_new_privs, and the symlink target is untouched.
 # C. Default user with a root-owned bind mount: exits 1 with a clear message.
+# D. FOLIO_UI_PASSWORD set: /ui/ serves the built web UI and its API needs a
+#    session (without the variable, scenario A, /ui is 404).
 #
 # Needs docker, curl and jq. Temporary files go under $SMOKE_TMP (default
 # $RUNNER_TEMP, else ~/.cache/folio/tmp), never /tmp.
@@ -32,7 +34,7 @@ as_root() { # run a shell snippet as root in the image with $work at /w
 }
 
 cleanup() {
-	docker rm -f "$name-a" "$name-b" >/dev/null 2>&1 || true
+	docker rm -f "$name-a" "$name-b" "$name-d" >/dev/null 2>&1 || true
 	docker volume rm -f "$name-vol" >/dev/null 2>&1 || true
 	as_root 'rm -rf /w/data /w/rootonly' >/dev/null 2>&1 || true
 	rm -rf "$work"
@@ -41,7 +43,7 @@ trap cleanup EXIT
 
 fail() {
 	echo "FAIL: $*" >&2
-	for c in "$name-a" "$name-b"; do
+	for c in "$name-a" "$name-b" "$name-d"; do
 		docker logs "$c" 2>&1 | tail -n 40 >&2 || true
 	done
 	exit 1
@@ -86,6 +88,8 @@ jq -e '.status == "ok" and (.version | length > 0) and (.sandbox | length > 0)' 
 	fail "A: unexpected /healthz body: $health"
 echo "healthz: $health"
 [ "$(status POST "$url/mcp")" = 401 ] || fail "A: /mcp without a token must be 401"
+[ "$(status GET "$url/ui/")" = 404 ] || fail "A: /ui/ must be 404 without FOLIO_UI_PASSWORD"
+[ "$(status GET "$url/ui/api/session")" = 404 ] || fail "A: /ui/api must not exist without FOLIO_UI_PASSWORD"
 [ "$(status POST "$url/mcp" -H "Authorization: Bearer wrong-token-0123456789abcdefghijklmnop")" = 401 ] ||
 	fail "A: /mcp with a wrong token must be 401"
 init="$(mcp "$url" "$token" initialize '{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}')"
@@ -110,6 +114,20 @@ docker exec "$name-a" folio healthcheck || fail "A: folio healthcheck inside the
 docker stop -t 90 "$name-a" >/dev/null
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$name-a")" = 0 ] || fail "A: non-zero exit after SIGTERM"
 docker logs "$name-a" 2>&1 | grep -q 'shut down cleanly' || fail "A: no clean shutdown log line"
+
+echo "== D: web UI enabled with FOLIO_UI_PASSWORD"
+url="http://127.0.0.1:$port_a"
+ui_password="$(od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
+docker run -d --name "$name-d" -p "127.0.0.1:$port_a:8080" \
+	-e FOLIO_PUBLIC_URL="$url" -e FOLIO_TOKEN="$token" -e FOLIO_UI_PASSWORD="$ui_password" \
+	-v "$name-vol:/data" "$image" >/dev/null
+wait_healthy "$url" >/dev/null || fail "D: /healthz never answered"
+index="$(curl -fsS "$url/ui/")" || fail "D: /ui/ did not answer"
+grep -q '<div id="app">' <<<"$index" || fail "D: /ui/ is not the built web UI: $(head -c 300 <<<"$index")"
+js="$(grep -o '/ui/assets/[^"]*\.js' <<<"$index" | head -1)"
+[ -n "$js" ] && [ "$(status GET "$url$js")" = 200 ] || fail "D: the UI bundle $js is not served"
+[ "$(status POST "$url/ui/api/logout" -H 'X-Folio-UI: 1')" = 401 ] || fail "D: the UI API must need a session"
+docker stop -t 90 "$name-d" >/dev/null
 
 echo "== B: --user 0 with a root-owned bind mount (Railway mode)"
 as_root 'mkdir -m 0755 /w/data && ln -s /etc/passwd /w/data/planted-link && chown -h 0:0 /w/data /w/data/planted-link'

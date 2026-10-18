@@ -37,10 +37,10 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.IMAGE }}
+          # Only immutable tags are pushed here; `latest` and `main` move in the
+          # promote job, after both native smoke tests passed.
           tags: |
             type=sha,prefix=sha-,format=short
-            type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
           labels: |
@@ -92,3 +92,28 @@ jobs:
         run: docker pull "${{ needs.publish.outputs.image }}"
       - name: container smoke test
         run: scripts/docker-smoke.sh "${{ needs.publish.outputs.image }}"
+
+  promote:
+    # Moves `latest` and `main` to the digest that passed both native smoke
+    # tests, so Railway's auto-update (tracking `latest`) never sees an
+    # untested image. Default branch only; release tags keep their own tags.
+    needs: [publish, smoke]
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: tag latest and main by digest
+        env:
+          SOURCE: ${{ needs.publish.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "${IMAGE}:latest" -t "${IMAGE}:main" "$SOURCE"
+          docker buildx imagetools inspect "${IMAGE}:latest"

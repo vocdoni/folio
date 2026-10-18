@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo deve
 IMAGE   ?= folio:dev
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION)
 
-.PHONY: build test test-race lint generate docker docker-smoke run clean
+.PHONY: build test test-race lint generate ui ui-check dev-ui docker docker-smoke run clean
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/folio ./cmd/folio
@@ -25,6 +25,19 @@ lint:
 generate:
 	$(GO) generate ./...
 
+# The web UI (Node 24, see web/.nvmrc): builds into internal/webui/dist, which
+# the next `make build` embeds. Without it /ui answers "UI assets not built".
+ui:
+	cd web && npm ci --no-audit --no-fund && npm run build
+
+ui-check:
+	cd web && npm run check && npm test
+
+# Vite dev server on :5173 proxying /ui/api to a local Folio started with
+# `make run` and FOLIO_UI_PASSWORD (FOLIO_URL overrides the target).
+dev-ui:
+	cd web && FOLIO_URL=$${FOLIO_URL:-http://localhost:8080} npm run dev
+
 docker:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
@@ -36,7 +49,8 @@ run: build
 	@token="$$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"; \
 	echo "FOLIO_TOKEN=$$token"; \
 	FOLIO_PUBLIC_URL=http://localhost:8080 FOLIO_DATA_DIR=./data FOLIO_LOG_FORMAT=text \
-	FOLIO_TOKEN="$$token" ./bin/folio serve
+	FOLIO_TOKEN="$$token" FOLIO_UI_PASSWORD="$${FOLIO_UI_PASSWORD:-}" ./bin/folio serve
 
 clean:
-	rm -rf bin
+	rm -rf bin web/node_modules web/test-results web/playwright-report
+	find internal/webui/dist -mindepth 1 ! -name .keep -delete
