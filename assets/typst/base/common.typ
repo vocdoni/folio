@@ -49,9 +49,27 @@
   show link: set text(fill: primary)
   // Header styling applies only to real header rows (table.header); header-less
   // tables (info, signatures) get plain rows. Cell text is never justified.
-  set table(stroke: (bottom: 0.3pt + muted.lighten(60%)), inset: (x: 5pt, y: 4pt))
-  show table.header: set text(weight: "bold")
-  show table.header: set table.cell(stroke: (bottom: 0.7pt + primary))
+  // Pandoc emits table.header(...) + table.hline() only for tables with a head.
+  // Such tables are rebuilt: horizontal rules only (0.7pt primary under the
+  // header, 0.3pt muted under body rows), bold header cells. Header-less tables
+  // get no rules. The stroke-none default doubles as the "already rebuilt" marker.
+  set table(stroke: none, inset: (x: 5pt, y: 4pt))
+  show table: it => if it.stroke != none { it } else {
+    let f = it.fields()
+    let kids = f.remove("children")
+    let has-header = kids.any(c => c.func() == table.header)
+    let _ = f.remove("stroke", default: none)
+    kids = kids.filter(c => c.func() != table.hline).map(c => if c.func() == table.header {
+      table.header(..c.children.map(x => if x.func() == table.cell {
+        let g = x.fields()
+        let b = g.remove("body")
+        table.cell(..g, strong(b))
+      } else { strong(x) }))
+    } else { c })
+    table(..f, ..kids, stroke: (x, y) => if not has-header { none } else if y == 0 {
+      (bottom: 0.7pt + primary)
+    } else { (bottom: 0.3pt + muted.lighten(60%)) })
+  }
   show table.cell: set par(justify: false)
   set image(width: auto)
   body
