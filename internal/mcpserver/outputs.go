@@ -14,7 +14,6 @@ import (
 
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/checks"
-	"github.com/vocdoni/folio/internal/model"
 	"github.com/vocdoni/folio/internal/render"
 )
 
@@ -112,8 +111,7 @@ func (c *call) pagePNGs(ctx context.Context, files []catalog.File, pages []int) 
 		return out, nil
 	}
 	if pdf == nil {
-		return nil, &model.Error{Code: model.ErrNotFound,
-			Message: fmt.Sprintf("pages %v are not stored and this revision has no PDF to render them from (it was rendered with formats=[docx])", missing)}
+		return nil, invalid("pages %v are not stored and this revision has no PDF to render them from (it was rendered with formats=[docx]); request one of the stored preview pages", missing)
 	}
 	data, err := c.d.Blobs.Get(pdf.SHA256)
 	if err != nil {

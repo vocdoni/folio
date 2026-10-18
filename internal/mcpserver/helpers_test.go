@@ -92,6 +92,10 @@ func (f *fakeRenderer) Render(ctx context.Context, req render.Request) (*render.
 	}
 	res.PDF, res.DOCX, res.PageCount = f.pdf, []byte("PK\x03\x04docx-"+sum), 2
 	res.Pages = [][]byte{f.page, f.page}
+	if len(req.Input.Formats) == 1 && req.Input.Formats[0] == model.FormatDOCX {
+		// DOCX-only: no PDF; only the stored page-1 preview exists.
+		res.PDF, res.PageCount, res.Pages = nil, 0, [][]byte{f.page}
+	}
 	return res, nil
 }
 

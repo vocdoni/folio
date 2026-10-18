@@ -4,9 +4,11 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -75,6 +77,8 @@ func TestPrompts(t *testing.T) {
 	}
 	if _, err := cs.GetPrompt(ctx, &mcp.GetPromptParams{Name: "new_document", Arguments: map[string]string{"template_id": "nope"}}); err == nil {
 		t.Error("unknown template must fail")
+	} else if je := new(jsonrpc.Error); !errors.As(err, &je) || je.Code != jsonrpc.CodeInvalidParams {
+		t.Errorf("unknown template error = %#v, want JSON-RPC invalid params", err)
 	}
 	txt = get("new_template", map[string]string{"category": "quote"})
 	for _, want := range []string{"get_guide('templates')", `list_templates(category="quote")`, "preview_template", "expected_version"} {

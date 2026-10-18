@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -76,7 +77,7 @@ func registerPrompts(s *mcp.Server, d *Deps) {
 			text, err := d.newDocumentPrompt(ctx, req.Params.Arguments["template_id"])
 			if err != nil {
 				te, _ := toolError(err)
-				return nil, fmt.Errorf("new_document: %s", te.Message)
+				return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "new_document: " + te.Message}
 			}
 			return &mcp.GetPromptResult{Description: "Create a document with Folio", Messages: userMessage(text)}, nil
 		})

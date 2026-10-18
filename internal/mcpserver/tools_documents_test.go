@@ -113,6 +113,9 @@ func TestDocumentLifecycleTools(t *testing.T) {
 	if te := callErr(t, cs, "get_document", map[string]any{"id": r.DocumentID, "pages": []int{1, 2, 1, 2, 1, 2, 1}}); te.Code != model.ErrInvalidInput {
 		t.Fatalf("too many pages: %+v", te)
 	}
+	if te := callErr(t, cs, "get_document", map[string]any{"id": r.DocumentID, "revision": 1e20}); te.Code != model.ErrInvalidInput || strings.Contains(te.Message, "Go struct") || strings.Contains(te.Message, "GetDocumentIn") {
+		t.Fatalf("decode error leaks Go types: %+v", te)
+	}
 	var doc1 DocumentOut
 	callOK(t, cs, "get_document", map[string]any{"id": r.DocumentID, "revision": 1}, &doc1)
 	if doc1.Revision.Revision != 1 || doc1.Revision.Parent != 0 || doc1.Source != nil {
@@ -188,7 +191,7 @@ func TestReviewDocument(t *testing.T) {
 	_, cs := docEnv(t, nil)
 	var r RenderOut
 	callOK(t, cs, "render_document", renderArgs(nil), &r)
-	if te := callErr(t, cs, "review_document", map[string]any{"id": r.DocumentID}); te.Code != model.ErrUnavailable || !te.Retryable {
+	if te := callErr(t, cs, "review_document", map[string]any{"id": r.DocumentID}); te.Code != model.ErrUnavailable || te.Retryable || strings.Contains(te.Message, "retry later") {
 		t.Fatalf("no reviewer: %+v", te)
 	}
 
@@ -304,5 +307,15 @@ func TestToolSurface(t *testing.T) {
 	slices.Sort(names)
 	if !slices.Equal(all, names) {
 		t.Fatalf("tools = %v\nwant    %v", names, all)
+	}
+}
+
+func TestGetDocumentPagesOnDocxOnlyRevision(t *testing.T) {
+	_, cs := docEnv(t, nil)
+	var r RenderOut
+	callOK(t, cs, "render_document", renderArgs(map[string]any{"formats": []string{"docx"}}), &r)
+	te := callErr(t, cs, "get_document", map[string]any{"id": r.DocumentID, "pages": []int{2}})
+	if te.Code != model.ErrInvalidInput || !strings.Contains(te.Message, "formats=[docx]") {
+		t.Fatalf("missing page on a DOCX-only revision: %+v", te)
 	}
 }

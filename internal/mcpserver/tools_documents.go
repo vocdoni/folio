@@ -282,9 +282,14 @@ func reviewPages(requested []int, pageCount, maxPages int) ([]int, error) {
 	return out, nil
 }
 
+// errNoReviewer is returned when no AI reviewer is configured; unlike other
+// unavailable errors it is not retryable.
+var errNoReviewer = &model.Error{Code: model.ErrUnavailable,
+	Message: "the AI reviewer is not configured on this server (the operator sets FOLIO_OPENROUTER_API_KEY); use get_document with include_previews to inspect pages yourself. Retrying will fail the same way until the operator enables it"}
+
 func (d *Deps) review(ctx context.Context, c *call, in ReviewIn) (*ReviewOut, error) {
 	if d.Reviewer == nil {
-		return nil, &model.Error{Code: model.ErrUnavailable, Message: "the AI reviewer is not configured on this server (the operator sets FOLIO_OPENROUTER_API_KEY); use get_document with include_previews to inspect pages yourself"}
+		return nil, errNoReviewer
 	}
 	doc, err := d.Documents.Get(ctx, in.ID, in.Revision)
 	if err != nil {

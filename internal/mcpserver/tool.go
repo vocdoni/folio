@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -148,6 +149,10 @@ func decodeArgs[In any](raw json.RawMessage, resolved *jsonschema.Resolved) (In,
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil {
+		var ute *json.UnmarshalTypeError
+		if errors.As(err, &ute) {
+			return in, invalid("argument %s must be a %s (got %s)", ute.Field, ute.Type.Kind(), ute.Value)
+		}
 		return in, invalid("arguments: %v", err)
 	}
 	return in, nil

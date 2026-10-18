@@ -99,6 +99,8 @@ func TestAuthRequiredOnMCP(t *testing.T) {
 	} {
 		if rec := do(h, http.MethodPost, "/mcp", tc.header, nil); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s: status %d, want 401", tc.name, rec.Code)
+		} else if got := rec.Header().Get("WWW-Authenticate"); !strings.HasPrefix(got, "Bearer") {
+			t.Errorf("%s: WWW-Authenticate = %q, want a Bearer challenge", tc.name, got)
 		}
 	}
 	if rec := do(h, http.MethodPost, "/mcp", "Bearer "+tokB, nil); rec.Code != 200 || rec.Body.String() != "bob" {

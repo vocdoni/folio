@@ -90,7 +90,8 @@ rendered pages (blank pages, overflow, overlapping elements, table and
 typography problems). Its findings are advisory: they are stored on the
 revision and shown by `get_document`, and never change content, status or
 validation. Re-running replaces them. When the operator has not configured a
-reviewer, or the reviewer fails, the call returns `unavailable`;
+reviewer, the call returns a non-retryable `unavailable`; if the reviewer
+fails, it returns a retryable `unavailable`;
 `get_capabilities.reviewer_enabled` tells you in advance. Check pages
 yourself with `get_document(include_previews='all')` instead.
 

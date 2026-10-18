@@ -34,7 +34,7 @@ template is strict.
 | `busy` | the render queue is full | retry in a few seconds with the same arguments and `idempotency_key` |
 | `timeout` | pandoc or typst exceeded the render time limit | simplify: fewer nested blocks, smaller tables, a simpler custom layout |
 | `render_failed` | pandoc or typst failed, or an output check failed (invalid PDF/DOCX, too many pages, missing brand logo) | read the message: for custom layouts it quotes Typst's error; fix the layout or the content |
-| `unavailable` | an optional or external service is not available: the AI reviewer is not configured or failed, an asset URL could not be downloaded | retry later, or work without it (upload `content_base64` instead of `url`) |
+| `unavailable` | an optional or external service is not available: the AI reviewer is not configured or failed, an asset URL could not be downloaded | if the message says retrying will fail (reviewer not configured), do not retry; otherwise retry later, or work without it (upload `content_base64` instead of `url`) |
 | `internal` | a server-side problem; details are in the server log | retry once; if it persists, report it to the operator |
 
 ## Finding codes

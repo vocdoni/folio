@@ -380,7 +380,7 @@ func TestAgentWorkflow(t *testing.T) {
 	}
 
 	// AC14 without a reviewer.
-	if te := h.fail("review_document", map[string]any{"id": r.DocumentID}); te.Code != model.ErrUnavailable || !te.Retryable {
+	if te := h.fail("review_document", map[string]any{"id": r.DocumentID}); te.Code != model.ErrUnavailable || te.Retryable {
 		t.Fatalf("review without reviewer: %+v", te)
 	}
 

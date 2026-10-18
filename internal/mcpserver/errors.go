@@ -57,8 +57,10 @@ func toolError(err error) (te ToolError, internal bool) {
 		internal = true
 	}
 	switch te.Code {
-	case model.ErrBusy, model.ErrUnavailable:
+	case model.ErrBusy:
 		te.Retryable = true
+	case model.ErrUnavailable:
+		te.Retryable = !errors.Is(err, errNoReviewer)
 	case model.ErrInternal:
 		// Retryable stays false: an automatic retry loop must not hammer a broken server.
 	}

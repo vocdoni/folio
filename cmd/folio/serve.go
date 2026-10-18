@@ -28,6 +28,7 @@ func serveCmd(args []string) int {
 	log := app.NewLogger(cfg, os.Stderr)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() { <-ctx.Done(); stop() }() // a second signal during the drain terminates the process
 	a, err := app.New(ctx, cfg, app.Options{Version: version(), Logger: log})
 	if err != nil {
 		log.Error("startup failed", "err", err)
