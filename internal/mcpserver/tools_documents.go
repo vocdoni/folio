@@ -30,7 +30,6 @@ type ValidateOut struct {
 	Valid    bool            `json:"valid" jsonschema:"false when render_document would fail with validation_failed"`
 	Template model.Ref       `json:"template"`
 	Brand    model.Ref       `json:"brand"`
-	Computed json.RawMessage `json:"computed,omitempty" jsonschema:"totals, taxes and payments Folio computed (present when valid)"`
 	Findings []model.Finding `json:"findings" jsonschema:"errors (must fix) and warnings"`
 }
 
@@ -57,7 +56,6 @@ type RenderOut struct {
 	Brand      model.Ref       `json:"brand"`
 	Files      []FileOut       `json:"files"`
 	Previews   []string        `json:"previews"`
-	Computed   json.RawMessage `json:"computed"`
 	Warnings   []model.Finding `json:"warnings"`
 }
 
@@ -103,7 +101,6 @@ type RevisionOut struct {
 	Pages     int             `json:"pages,omitempty"`
 	Files     []FileOut       `json:"files"`
 	Previews  []string        `json:"previews"`
-	Computed  json.RawMessage `json:"computed"`
 	Warnings  []model.Finding `json:"warnings"`
 	Review    json.RawMessage `json:"review,omitempty" jsonschema:"advisory AI review (never affects content or status)"`
 	CreatedBy string          `json:"created_by"`
@@ -162,13 +159,13 @@ type DeleteDocumentOut struct {
 }
 
 const (
-	descValidate = `Dry-run a document against a template without rendering files: checks metadata and data against the template schemas, the Markdown dialect, required sections, components, images and placeholders, and computes money values. Returns valid, findings (errors and warnings with JSON pointer path and hint) and computed totals. Call it before render_document and fix every error; warnings (e.g. placeholders) do not block rendering unless the template is strict. Never compute totals yourself: read them from computed.`
+	descValidate = `Dry-run a document against a template without rendering files: checks metadata and data against the template schemas, the Markdown dialect, required sections, components, images and placeholders. Returns valid and findings (errors and warnings with JSON pointer path and hint). Call it before render_document and fix every error; warnings (e.g. placeholders) do not block rendering unless the template is strict.`
 
-	descRender = `Render a document to PDF and DOCX (formats) and store it as a revision. New document: template_id, markdown, metadata, data; pass an idempotency_key whenever you might retry, so a retry returns the first document (unchanged=true) instead of a duplicate. New revision of an existing document: document_id plus expected_revision = its latest revision (get_document); a stale value fails with conflict. Identical input returns the existing revision with unchanged=true. Returns download links (public capabilities; share only with intended readers), preview images (include_previews), computed totals and warnings. Errors: validation_failed (fix details and retry), archived, busy (retry in a few seconds), timeout (simplify the document). Long renders send progress notifications.`
+	descRender = `Render a document to PDF and DOCX (formats) and store it as a revision. New document: template_id, markdown, metadata, data; pass an idempotency_key whenever you might retry, so a retry returns the first document (unchanged=true) instead of a duplicate. New revision of an existing document: document_id plus expected_revision = its latest revision (get_document); a stale value fails with conflict. Identical input returns the existing revision with unchanged=true. Returns download links (public capabilities; share only with intended readers), preview images (include_previews) and warnings. Errors: validation_failed (fix details and retry), archived, busy (retry in a few seconds), timeout (simplify the document). Long renders send progress notifications.`
 
 	descListDocuments = `List documents, newest first, with status (draft, published, trashed), latest and published revision, template, client and author. Trashed documents are hidden unless include_trashed=true or status=trashed. Use get_document for files and details.`
 
-	descGetDocument = `Get a document: metadata, every revision (newest first), and the requested revision in full (files with download links, preview links, computed totals, warnings, advisory review). include_source=true returns the stored input, which is what you edit to revise the document with render_document(document_id, expected_revision). Page images: include_previews (none, first, all) or explicit pages (at most 6).`
+	descGetDocument = `Get a document: metadata, every revision (newest first), and the requested revision in full (files with download links, preview links, warnings, advisory review). include_source=true returns the stored input, which is what you edit to revise the document with render_document(document_id, expected_revision). Page images: include_previews (none, first, all) or explicit pages (at most 6).`
 
 	descReview = `Ask the optional AI visual reviewer to look at rendered pages of a revision and store its findings on that revision (re-running replaces them). Findings are advisory only: they never change content, status or validation, and every response labels them advisory. Returns unavailable when the reviewer is not configured on this server or fails (retry later). Pages leave the server only when this tool runs.`
 
@@ -185,7 +182,7 @@ func (c *call) renderOut(ctx context.Context, r *documents.RenderResult, mode st
 		return nil, err
 	}
 	out := &RenderOut{DocumentID: r.DocumentID, Revision: r.Revision, Unchanged: r.Unchanged, Status: r.Status, Template: r.Template,
-		Brand: r.Brand, Files: files, Previews: previews, Computed: r.Computed, Warnings: r.Warnings}
+		Brand: r.Brand, Files: files, Previews: previews, Warnings: r.Warnings}
 	if out.Files == nil {
 		out.Files = []FileOut{}
 	}
@@ -194,9 +191,6 @@ func (c *call) renderOut(ctx context.Context, r *documents.RenderResult, mode st
 	}
 	if out.Warnings == nil {
 		out.Warnings = []model.Finding{}
-	}
-	if len(out.Computed) == 0 {
-		out.Computed = json.RawMessage(`{}`)
 	}
 	return out, nil
 }
@@ -207,7 +201,7 @@ func (c *call) documentOut(ctx context.Context, d *documents.Document, in GetDoc
 	out := &DocumentOut{ID: d.ID, Title: d.Title, TemplateID: d.TemplateID, Client: d.Client, Status: d.Status,
 		LatestRevision: d.LatestRevision, PublishedRevision: d.PublishedRevision, CreatedBy: d.CreatedBy, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 		Revision: RevisionOut{Revision: r.Revision, Parent: r.Parent, Template: r.Template, Brand: r.Brand, Pages: pages,
-			Files: files, Previews: previews, Computed: r.Computed, Warnings: r.Warnings, Review: r.Review, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt},
+			Files: files, Previews: previews, Warnings: r.Warnings, Review: r.Review, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt},
 		Revisions: []RevisionSummary{}}
 	if out.Revision.Files == nil {
 		out.Revision.Files = []FileOut{}
@@ -368,7 +362,7 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, err
 			}
-			out.Valid, out.Computed, out.Findings = true, res.Computed, res.Warnings
+			out.Valid, out.Findings = true, res.Warnings
 			if out.Findings == nil {
 				out.Findings = []model.Finding{}
 			}

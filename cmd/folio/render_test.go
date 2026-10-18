@@ -50,17 +50,13 @@ func TestRenderExampleRequest(t *testing.T) {
 			t.Errorf("missing %s", f)
 		}
 	}
-	var res struct {
-		Computed struct {
-			Budget struct {
-				Total string `json:"total"`
-			} `json:"budget"`
-		} `json:"computed"`
-		Warnings []any `json:"warnings"`
-	}
+	var res map[string]json.RawMessage
 	raw, _ := os.ReadFile(filepath.Join(out, "result.json"))
-	if err := json.Unmarshal(raw, &res); err != nil || res.Computed.Budget.Total != "22118.80" || len(res.Warnings) != 0 {
+	if err := json.Unmarshal(raw, &res); err != nil || string(res["warnings"]) != "[]" || res["input_sha256"] == nil {
 		t.Fatalf("result.json = %s", raw)
+	}
+	if _, ok := res["computed"]; ok {
+		t.Fatalf("result.json must not carry computed values: %s", raw)
 	}
 }
 

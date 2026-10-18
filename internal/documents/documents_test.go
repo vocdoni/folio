@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -284,5 +285,30 @@ func TestListNewestFirstWithCursor(t *testing.T) {
 	_ = s.Trash(ctx, "alice", ids[0], false)
 	if got, _, _ := s.List(ctx, ListFilter{}); len(got) != 4 {
 		t.Fatalf("trashed listed by default: %d", len(got))
+	}
+}
+
+// Folio derives no values from the input: a new revision stores the column
+// default '{}' in revisions.computed and Get exposes no computed field.
+func TestRevisionsCarryNoComputedValues(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	r, err := s.Render(ctx, "alice", RenderRequest{TemplateID: "proposal", Input: in("v1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err := s.DB.R.QueryRowContext(ctx, `SELECT computed FROM revisions WHERE document_id = ? AND revision = 1`, r.DocumentID).Scan(&stored); err != nil || stored != "{}" {
+		t.Fatalf("revisions.computed = %q %v", stored, err)
+	}
+	d, err := s.Get(ctx, r.DocumentID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []any{r, d} {
+		raw, _ := json.Marshal(v)
+		if strings.Contains(string(raw), `"computed"`) {
+			t.Fatalf("output carries computed: %s", raw)
+		}
 	}
 }

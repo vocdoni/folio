@@ -22,7 +22,6 @@ type Revision struct {
 	Template  model.Ref       `json:"template"`
 	Brand     model.Ref       `json:"brand"`
 	InputBlob string          `json:"-"`
-	Computed  json.RawMessage `json:"computed"`
 	Warnings  []model.Finding `json:"warnings"`
 	Review    json.RawMessage `json:"review,omitempty"`
 	Files     []catalog.File  `json:"files"`
@@ -66,7 +65,7 @@ func (s *Service) Get(ctx context.Context, id string, revision int) (*Document, 
 		revision = d.LatestRevision
 	}
 	rows, err := s.DB.R.QueryContext(ctx, `SELECT revision, coalesce(parent_revision, 0), template_id, template_version, brand_id, brand_version,
-		input_blob, computed, warnings, review, created_by, created_at FROM revisions WHERE document_id = ? ORDER BY revision DESC`, id)
+		input_blob, warnings, review, created_by, created_at FROM revisions WHERE document_id = ? ORDER BY revision DESC`, id)
 	if err != nil {
 		return nil, fmt.Errorf("documents: revisions: %w", err)
 	}
@@ -74,13 +73,13 @@ func (s *Service) Get(ctx context.Context, id string, revision int) (*Document, 
 	found := false
 	for rows.Next() {
 		var r Revision
-		var computed, warnings, ts string
+		var warnings, ts string
 		var review sql.NullString
 		if err := rows.Scan(&r.Revision, &r.Parent, &r.Template.ID, &r.Template.Version, &r.Brand.ID, &r.Brand.Version,
-			&r.InputBlob, &computed, &warnings, &review, &r.CreatedBy, &ts); err != nil {
+			&r.InputBlob, &warnings, &review, &r.CreatedBy, &ts); err != nil {
 			return nil, fmt.Errorf("documents: scan revision: %w", err)
 		}
-		r.Computed, r.CreatedAt = json.RawMessage(computed), parseTS(ts)
+		r.CreatedAt = parseTS(ts)
 		_ = json.Unmarshal([]byte(warnings), &r.Warnings)
 		if review.Valid {
 			r.Review = json.RawMessage(review.String)
@@ -88,7 +87,7 @@ func (s *Service) Get(ctx context.Context, id string, revision int) (*Document, 
 		if r.Revision == revision {
 			d.Revision, found = r, true
 		}
-		r.Computed, r.Warnings = nil, nil
+		r.Warnings = nil
 		d.Revisions = append(d.Revisions, r)
 	}
 	if err := rows.Err(); err != nil {

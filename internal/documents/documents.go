@@ -67,7 +67,6 @@ type RenderResult struct {
 	Template   model.Ref       `json:"template"`
 	Brand      model.Ref       `json:"brand"`
 	Files      []catalog.File  `json:"files"`
-	Computed   json.RawMessage `json:"computed"`
 	Warnings   []model.Finding `json:"warnings"`
 }
 
@@ -181,7 +180,7 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 	_ = json.Unmarshal(req.Input.Metadata, &meta) // validated by the pipeline
 
 	out := &RenderResult{Template: model.Ref{ID: t.ID, Version: tv}, Brand: model.Ref{ID: b.ID, Version: bv},
-		Files: files, Computed: res.Computed, Warnings: res.Warnings}
+		Files: files, Warnings: res.Warnings}
 	err = s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		ts := store.Now(now)
 		var revision, parent int
@@ -235,11 +234,13 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 		if parent > 0 {
 			parentArg = parent
 		}
+		// revisions.computed keeps its default '{}': Folio derives no values
+		// from the input any more, and nothing reads the column.
 		if _, err := tx.ExecContext(ctx, `INSERT INTO revisions (document_id, revision, parent_revision, template_id, template_version,
-			brand_id, brand_version, input_sha256, input_blob, computed, warnings, render_ms, created_by, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			brand_id, brand_version, input_sha256, input_blob, warnings, render_ms, created_by, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			out.DocumentID, revision, parentArg, t.ID, tv, b.ID, bv, res.InputSHA256, inputBlob,
-			string(res.Computed), string(warnings), res.Duration.Milliseconds(), actor, ts); err != nil {
+			string(warnings), res.Duration.Milliseconds(), actor, ts); err != nil {
 			return fmt.Errorf("documents: insert revision: %w", err)
 		}
 		for _, f := range files {
@@ -290,7 +291,7 @@ func (s *Service) unchanged(ctx context.Context, id string, revision int) (*Rend
 	}
 	return &RenderResult{DocumentID: d.ID, Revision: d.Revision.Revision, Unchanged: true, Status: d.Status,
 		Template: d.Revision.Template, Brand: d.Revision.Brand, Files: d.Revision.Files,
-		Computed: d.Revision.Computed, Warnings: d.Revision.Warnings}, nil
+		Warnings: d.Revision.Warnings}, nil
 }
 
 func nonNil(fs []model.Finding) []model.Finding {

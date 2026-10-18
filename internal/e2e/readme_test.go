@@ -16,8 +16,8 @@ import (
 
 // readmeExample is one `<!-- folio-example tool=… -->` block of the README.
 type readmeExample struct {
-	tool, from, total, payments string
-	args                        string
+	tool, from string
+	args       string
 }
 
 var exampleRE = regexp.MustCompile(`^<!-- folio-example tool=([a-z_]+)((?: [a-z]+=[^ ]+)*) -->$`)
@@ -41,10 +41,6 @@ func readmeExamples(t *testing.T) []readmeExample {
 			switch k {
 			case "from":
 				ex.from = v
-			case "total":
-				ex.total = v
-			case "payments":
-				ex.payments = v
 			default:
 				t.Fatalf("README line %d: unknown attribute %q", i+1, k)
 			}
@@ -103,21 +99,8 @@ func TestReadmeExamples(t *testing.T) {
 			var v mcpserver.ValidateOut
 			raw, _ := json.Marshal(res)
 			_ = json.Unmarshal(raw, &v)
-			var c struct {
-				Budget     struct{ Total string }
-				Milestones struct {
-					Items []struct{ Amount string }
-				}
-			}
-			_ = json.Unmarshal(v.Computed, &c)
-			var pay []string
-			for _, it := range c.Milestones.Items {
-				pay = append(pay, it.Amount)
-			}
-			if !v.Valid || len(v.Findings) != 0 || (ex.total != "" && c.Budget.Total != ex.total) ||
-				(ex.payments != "" && strings.Join(pay, ",") != ex.payments) {
-				t.Fatalf("example %d: valid=%v findings=%+v total=%s payments=%v (README says %s / %s)",
-					i+1, v.Valid, v.Findings, c.Budget.Total, pay, ex.total, ex.payments)
+			if !v.Valid || len(v.Findings) != 0 {
+				t.Fatalf("example %d: valid=%v findings=%+v", i+1, v.Valid, v.Findings)
 			}
 		case "upload_asset":
 			var id string

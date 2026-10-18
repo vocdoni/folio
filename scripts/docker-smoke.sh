@@ -105,7 +105,7 @@ curl -fsS -o "$work/out.pdf" "$pdf_url" || fail "A: PDF download"
 curl -fsS -o "$work/out.docx" "$docx_url" || fail "A: DOCX download"
 [ "$(head -c 5 "$work/out.pdf")" = "%PDF-" ] || fail "A: the download is not a PDF"
 [ "$(head -c 2 "$work/out.docx")" = "PK" ] || fail "A: the download is not a DOCX"
-echo "rendered proposal: total $(jq -r '.result.structuredContent.computed.budget.total' <<<"$res")"
+echo "rendered proposal: document $(jq -r '.result.structuredContent.document_id' <<<"$res") revision $(jq -r '.result.structuredContent.revision' <<<"$res")"
 docker exec "$name-a" folio healthcheck || fail "A: folio healthcheck inside the container"
 docker stop -t 90 "$name-a" >/dev/null
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$name-a")" = 0 ] || fail "A: non-zero exit after SIGTERM"

@@ -336,7 +336,7 @@ func TestAgentWorkflow(t *testing.T) {
 	input := map[string]any{"template_id": "proposal", "markdown": md, "metadata": tpl.Sample.Metadata, "data": tpl.Sample.Data}
 	var v mcpserver.ValidateOut
 	h.ok("validate_document", input, &v)
-	if !v.Valid || !strings.Contains(string(v.Computed), `"total"`) {
+	if !v.Valid || len(v.Findings) != 0 {
 		t.Fatalf("validate: %+v", v)
 	}
 	input["idempotency_key"] = "ac2-proposal"
@@ -731,7 +731,7 @@ func TestGuideExamples(t *testing.T) {
 	}
 	h.ok("render_document", in, nil)
 
-	// The components guide's budget example computes the documented total.
+	// The components guide's budget example validates.
 	var budget map[string]any
 	if err := json.Unmarshal([]byte(codeBlocks(t, "components", "## budget", "json")[0]), &budget); err != nil {
 		t.Fatal(err)
@@ -739,12 +739,8 @@ func TestGuideExamples(t *testing.T) {
 	in = memoInput("Budget example", "10")
 	in["template_id"], in["data"] = "memo", budget
 	h.ok("validate_document", in, &v)
-	var computed struct {
-		Budget struct{ Total, Subtotal string }
-	}
-	_ = json.Unmarshal(v.Computed, &computed)
-	if !v.Valid || computed.Budget.Subtotal != "8700.00" || computed.Budget.Total != "10426.20" {
-		t.Fatalf("budget example: valid=%v %+v %+v", v.Valid, computed, v.Findings)
+	if !v.Valid || len(v.Findings) != 0 {
+		t.Fatalf("budget example: valid=%v %+v", v.Valid, v.Findings)
 	}
 
 	// The typst-layouts examples compile into templates without warnings.

@@ -54,7 +54,7 @@ func TestValidateDocument(t *testing.T) {
 	_, cs := docEnv(t, nil)
 	var v ValidateOut
 	callOK(t, cs, "validate_document", renderArgs(nil), &v)
-	if !v.Valid || len(v.Findings) != 1 || v.Findings[0].Code != model.CodePlaceholder || string(v.Computed) == "" || v.Template.Version != 1 {
+	if !v.Valid || len(v.Findings) != 1 || v.Findings[0].Code != model.CodePlaceholder || v.Template.Version != 1 {
 		t.Fatalf("valid: %+v", v)
 	}
 	callOK(t, cs, "validate_document", renderArgs(map[string]any{"markdown": "FAIL"}), &v)
@@ -300,6 +300,9 @@ func TestToolSurface(t *testing.T) {
 		out, _ := json.Marshal(tl.OutputSchema)
 		if !strings.Contains(string(out), `"error"`) {
 			t.Errorf("%s: output schema lacks error", tl.Name)
+		}
+		if strings.Contains(string(out), `"computed"`) {
+			t.Errorf("%s: output schema still has computed: Folio derives no values from the input", tl.Name)
 		}
 	}
 	all := slices.Concat(readOnlyTools, destructiveTools, idempotentWrites, writes)

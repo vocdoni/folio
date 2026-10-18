@@ -286,7 +286,7 @@ retryable, details[]}`; each detail has a JSON pointer `path` and a `hint`.
 2. Validate the document (a dry run that also returns the computed money
    values):
 
-<!-- folio-example tool=validate_document total=17736.52 payments=5320.96,7094.61,5320.95 -->
+<!-- folio-example tool=validate_document -->
 ```json
 {
   "template_id": "proposal",
