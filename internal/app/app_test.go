@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/config"
 	"github.com/vocdoni/folio/internal/httpserver"
 	"github.com/vocdoni/folio/internal/sandbox"
@@ -172,6 +173,35 @@ func TestAppServesAndShutsDown(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not return after cancel")
+	}
+}
+
+// TestCloseFlushesActivity: the activity writer runs from New (without Run)
+// and Close writes the rows still queued before closing the database.
+func TestCloseFlushesActivity(t *testing.T) {
+	requireTools(t)
+	cfg := testConfig(t, nil)
+	a, err := New(context.Background(), cfg, Options{Version: "test", Logger: slog.New(slog.DiscardHandler), JobRoot: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"get_guide", "list_documents"} {
+		a.Activity.Record(activity.Row{Source: activity.SourceMCP, Actor: "alice", Action: action, Outcome: activity.OutcomeOK})
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if a.Activity.Written() != 2 || a.Activity.Dropped() != 0 {
+		t.Fatalf("written %d, dropped %d, want 2 and 0", a.Activity.Written(), a.Activity.Dropped())
+	}
+	db, err := store.Open(context.Background(), cfg.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, _, err := activity.List(context.Background(), db, activity.Filter{})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("stored rows %d, %v", len(rows), err)
 	}
 }
 

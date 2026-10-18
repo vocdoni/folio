@@ -11,10 +11,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/assets"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/config"
 	"github.com/vocdoni/folio/internal/documents"
+	"github.com/vocdoni/folio/internal/model"
 	"github.com/vocdoni/folio/internal/render"
 	"github.com/vocdoni/folio/internal/review"
 	"github.com/vocdoni/folio/internal/store"
@@ -36,7 +38,8 @@ type Deps struct {
 	Queue     *render.Queue    // on-demand rasterisation takes a render slot
 	Blobs     *store.Blobs
 	DB        *store.DB
-	Reviewer  review.Reviewer // nil: review_document returns unavailable
+	Reviewer  review.Reviewer    // nil: review_document returns unavailable
+	Activity  *activity.Recorder // nil: tool calls are not recorded in the activity feed
 	Config    *config.Config
 	Version   string
 	Sandbox   string   // sandbox level reported by get_capabilities
@@ -63,4 +66,31 @@ func (d *Deps) audit(ctx context.Context, actor, action, kind, id, outcome strin
 	if err != nil {
 		d.Logger.Error("audit write failed", "action", action, "err", err)
 	}
+}
+
+// record queues one activity row for a tool call (errorCode "" = ok). It
+// never blocks the call.
+func (d *Deps) record(tool, actor, kind, id, errorCode string, dur time.Duration, detail activity.Detail) {
+	if d.Activity == nil {
+		return
+	}
+	outcome := activity.OutcomeOK
+	if errorCode != "" {
+		outcome = activity.OutcomeErr
+	}
+	d.Activity.Record(activity.Row{TS: d.Now(), Source: activity.SourceMCP, Actor: actor, Action: tool, TargetKind: kind, TargetID: id,
+		Outcome: outcome, ErrorCode: errorCode, DurationMS: dur.Milliseconds(), Detail: detail})
+}
+
+// findingCounts summarises findings for the activity detail.
+func findingCounts(fs []model.Finding) activity.Detail {
+	var d activity.Detail
+	for _, f := range fs {
+		if f.Severity == model.SeverityError {
+			d.FindingsErrors++
+		} else {
+			d.FindingsWarnings++
+		}
+	}
+	return d
 }

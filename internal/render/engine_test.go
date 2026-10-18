@@ -372,3 +372,34 @@ func TestVendoredPackageMechanism(t *testing.T) {
 		t.Fatalf("vendored package did not compile: %v", err)
 	}
 }
+
+// TestDOCXToMarkdown round-trips a DOCX written by pandoc back to Markdown
+// under the sandbox (the web UI's template-draft examples).
+func TestDOCXToMarkdown(t *testing.T) {
+	e := testEngine(t)
+	ctx := context.Background()
+	job, err := e.NewJob()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer job.Remove()
+	ref, err := bundled.ReferenceDOCX()
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := e.ParseMarkdown(ctx, job, "# Scope\n\nWe deliver **three** things.\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	docx, err := e.WriteDOCX(ctx, job, doc, DOCXOptions{ReferenceDOCX: ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, err := e.DOCXToMarkdown(ctx, docx)
+	if err != nil || !strings.Contains(md, "# Scope") || !strings.Contains(md, "**three**") {
+		t.Fatalf("markdown %q, %v", md, err)
+	}
+	if _, err := e.DOCXToMarkdown(ctx, []byte("not a docx")); err == nil {
+		t.Fatal("garbage must fail")
+	}
+}

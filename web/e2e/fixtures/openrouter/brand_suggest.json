@@ -1,0 +1,21 @@
+[
+ {
+  "name": "Northwind Traders",
+  "colors": {
+   "primary": "#0B5D4B",
+   "secondary": "#123B33",
+   "accent": "#D98E04",
+   "text": "#1C2421",
+   "muted": "#5B6662",
+   "background": "#FFFFFF"
+  },
+  "fonts": {
+   "heading": "Inter",
+   "body": "Noto Sans",
+   "mono": "JetBrains Mono"
+  },
+  "header": "Northwind Traders",
+  "footer": "northwind.example",
+  "logo_index": -1
+ }
+]

@@ -277,3 +277,29 @@ func TestOpenPathWithURIMetacharacters(t *testing.T) {
 		t.Fatalf("stray files next to the data dir: %v", entries)
 	}
 }
+
+func TestMigrationAddsActivityTable(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Emulate a v1 database: no activity table, user_version 1.
+	if _, err := db.W.ExecContext(ctx, "DROP TABLE activity; PRAGMA user_version = 1"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	db, err = Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var n int
+	if err := db.R.QueryRowContext(ctx, `SELECT count(*) FROM activity`).Scan(&n); err != nil || SchemaVersion() != 2 {
+		t.Fatalf("activity table after upgrade: %v (schema v%d)", err, SchemaVersion())
+	}
+	if _, err := db.W.ExecContext(ctx, `INSERT INTO activity (ts, source, actor, action, outcome) VALUES ('t', 'cli', 'a', 'b', 'ok')`); err == nil {
+		t.Fatal("source must be mcp or ui")
+	}
+}

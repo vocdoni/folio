@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/documents"
 	"github.com/vocdoni/folio/internal/model"
 	"github.com/vocdoni/folio/internal/render"
@@ -341,6 +342,8 @@ func (d *Deps) review(ctx context.Context, c *call, in ReviewIn) (*ReviewOut, er
 
 func registerDocumentTools(s *mcp.Server, d *Deps) {
 	register(s, d, tool[ValidateIn, ValidateOut]{Name: "validate_document", Title: "Validate a document (dry run)", Description: descValidate, Access: readOnly,
+		Target: func(in ValidateIn) (string, string) { return "template", in.TemplateID },
+		Record: func(_ ValidateIn, out *ValidateOut) (string, activity.Detail) { return "", findingCounts(out.Findings) },
 		Handle: func(ctx context.Context, c *call, in ValidateIn) (*ValidateOut, error) {
 			t, tv, err := d.Catalog.ResolveTemplate(ctx, in.TemplateID, in.TemplateVersion, false)
 			if err != nil {
@@ -376,6 +379,17 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[RenderIn, RenderOut]{Name: "render_document", Title: "Render a document", Description: descRender, Access: write,
 		Target: func(in RenderIn) (string, string) { return "document", in.DocumentID },
+		Record: func(_ RenderIn, out *RenderOut) (string, activity.Detail) {
+			dt := findingCounts(out.Warnings)
+			dt.Revision, dt.Unchanged = out.Revision, out.Unchanged
+			for _, f := range out.Files {
+				dt.Formats = append(dt.Formats, f.Kind)
+				if f.Kind == "pdf" {
+					dt.Pages = f.Pages
+				}
+			}
+			return out.DocumentID, dt
+		},
 		Handle: func(ctx context.Context, c *call, in RenderIn) (*RenderOut, error) {
 			mode, err := previewMode(in.IncludePreviews)
 			if err != nil {
@@ -426,6 +440,7 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 		}})
 
 	register(s, d, tool[GetDocumentIn, DocumentOut]{Name: "get_document", Title: "Get a document", Description: descGetDocument, Access: readOnly,
+		Target: func(in GetDocumentIn) (string, string) { return "document", in.ID },
 		Handle: func(ctx context.Context, c *call, in GetDocumentIn) (*DocumentOut, error) {
 			doc, err := d.Documents.Get(ctx, in.ID, in.Revision)
 			if err != nil {
@@ -456,6 +471,9 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[PublishIn, StatusOut]{Name: "publish_document", Title: "Publish a revision", Description: descPublish, Access: write, Idempotent: true,
 		Target: func(in PublishIn) (string, string) { return "document", in.ID },
+		Record: func(in PublishIn, _ *StatusOut) (string, activity.Detail) {
+			return "", activity.Detail{Revision: in.Revision}
+		},
 		Handle: func(ctx context.Context, c *call, in PublishIn) (*StatusOut, error) {
 			if err := d.Documents.Publish(ctx, c.Actor, in.ID, in.Revision); err != nil {
 				return nil, err
@@ -466,6 +484,9 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[DeleteDocumentIn, DeleteDocumentOut]{Name: "delete_document", Title: "Trash or purge a document", Description: descDelete, Access: destructive,
 		Target: func(in DeleteDocumentIn) (string, string) { return "document", in.ID },
+		Record: func(in DeleteDocumentIn, _ *DeleteDocumentOut) (string, activity.Detail) {
+			return "", activity.Detail{Purge: in.Purge}
+		},
 		Handle: func(ctx context.Context, c *call, in DeleteDocumentIn) (*DeleteDocumentOut, error) {
 			if in.Purge {
 				if err := d.Documents.Purge(ctx, c.Actor, in.ID, in.ConfirmPublished); err != nil {

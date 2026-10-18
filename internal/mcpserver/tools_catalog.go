@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	bundled "github.com/vocdoni/folio/assets"
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/brandkit"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/components"
@@ -394,6 +395,7 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 		}})
 
 	register(s, d, tool[GetIn, GetBrandOut]{Name: "get_brand", Title: "Get a brand", Description: descGetBrand, Access: readOnly,
+		Target: func(in GetIn) (string, string) { return "brand", in.ID },
 		Handle: func(ctx context.Context, c *call, in GetIn) (*GetBrandOut, error) {
 			it, err := d.Catalog.GetBrand(ctx, in.ID, in.Version)
 			if err != nil {
@@ -405,6 +407,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[CreateBrandIn, VersionOut]{Name: "create_brand", Title: "Create a brand", Description: descCreateBrand, Access: write,
 		Target: func(in CreateBrandIn) (string, string) { return "brand", in.Brand.ID },
+		Record: func(_ CreateBrandIn, out *VersionOut) (string, activity.Detail) {
+			return "", activity.Detail{Version: out.Version}
+		},
 		Handle: func(ctx context.Context, c *call, in CreateBrandIn) (*VersionOut, error) {
 			v, err := d.Catalog.CreateBrand(ctx, c.Actor, in.Brand, in.Note)
 			if err != nil {
@@ -416,6 +421,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[UpdateBrandIn, VersionOut]{Name: "update_brand", Title: "Update a brand", Description: descUpdateBrand, Access: write,
 		Target: func(in UpdateBrandIn) (string, string) { return "brand", in.ID },
+		Record: func(_ UpdateBrandIn, out *VersionOut) (string, activity.Detail) {
+			return "", activity.Detail{Version: out.Version}
+		},
 		Handle: func(ctx context.Context, c *call, in UpdateBrandIn) (*VersionOut, error) {
 			v, err := d.Catalog.UpdateBrand(ctx, c.Actor, in.ID, in.ExpectedVersion, in.Brand, in.Note)
 			if err != nil {
@@ -427,6 +435,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[ArchiveIn, ArchiveOut]{Name: "archive_brand", Title: "Archive or restore a brand", Description: descArchiveBrand, Access: write, Idempotent: true,
 		Target: func(in ArchiveIn) (string, string) { return "brand", in.ID },
+		Record: func(in ArchiveIn, _ *ArchiveOut) (string, activity.Detail) {
+			return "", activity.Detail{Archived: &in.Archived}
+		},
 		Handle: func(ctx context.Context, c *call, in ArchiveIn) (*ArchiveOut, error) {
 			if err := d.Catalog.ArchiveBrand(ctx, c.Actor, in.ID, in.Archived); err != nil {
 				return nil, err
@@ -455,6 +466,7 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 		}})
 
 	register(s, d, tool[GetIn, GetTemplateOut]{Name: "get_template", Title: "Get a template", Description: descGetTemplate, Access: readOnly,
+		Target: func(in GetIn) (string, string) { return "template", in.ID },
 		Handle: func(ctx context.Context, c *call, in GetIn) (*GetTemplateOut, error) {
 			it, err := d.Catalog.GetTemplate(ctx, in.ID, in.Version)
 			if err != nil {
@@ -466,6 +478,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[CreateTemplateIn, TemplateResultOut]{Name: "create_template", Title: "Create a template", Description: descCreateTemplate, Access: write,
 		Target: func(in CreateTemplateIn) (string, string) { return "template", in.Template.ID },
+		Record: func(_ CreateTemplateIn, out *TemplateResultOut) (string, activity.Detail) {
+			return "", activity.Detail{Version: out.Version}
+		},
 		Handle: func(ctx context.Context, c *call, in CreateTemplateIn) (*TemplateResultOut, error) {
 			p := c.startProgress(ctx)
 			defer p.Stop()
@@ -487,6 +502,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[UpdateTemplateIn, TemplateResultOut]{Name: "update_template", Title: "Update a template", Description: descUpdateTemplate, Access: write,
 		Target: func(in UpdateTemplateIn) (string, string) { return "template", in.ID },
+		Record: func(_ UpdateTemplateIn, out *TemplateResultOut) (string, activity.Detail) {
+			return "", activity.Detail{Version: out.Version}
+		},
 		Handle: func(ctx context.Context, c *call, in UpdateTemplateIn) (*TemplateResultOut, error) {
 			p := c.startProgress(ctx)
 			defer p.Stop()
@@ -508,6 +526,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 
 	register(s, d, tool[ArchiveIn, ArchiveOut]{Name: "archive_template", Title: "Archive or restore a template", Description: descArchiveTemplate, Access: write, Idempotent: true,
 		Target: func(in ArchiveIn) (string, string) { return "template", in.ID },
+		Record: func(in ArchiveIn, _ *ArchiveOut) (string, activity.Detail) {
+			return "", activity.Detail{Archived: &in.Archived}
+		},
 		Handle: func(ctx context.Context, c *call, in ArchiveIn) (*ArchiveOut, error) {
 			if err := d.Catalog.ArchiveTemplate(ctx, c.Actor, in.ID, in.Archived); err != nil {
 				return nil, err
@@ -519,6 +540,9 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 	register(s, d, tool[PreviewTemplateIn, TemplateResultOut]{Name: "preview_template", Title: "Preview a template", Description: descPreviewTemplate,
 		Access: write, Idempotent: true,
 		Target: func(in PreviewTemplateIn) (string, string) { return "template", in.ID },
+		Record: func(_ PreviewTemplateIn, out *TemplateResultOut) (string, activity.Detail) {
+			return "", activity.Detail{Version: out.Version}
+		},
 		Handle: func(ctx context.Context, c *call, in PreviewTemplateIn) (*TemplateResultOut, error) {
 			mode, err := previewMode(in.IncludePreviews)
 			if err != nil {

@@ -21,9 +21,12 @@ With the CLI (`railway login` and `railway link` to the project first):
 railway add --service folio --image ghcr.io/vocdoni/folio:latest
 ```
 
-`latest` follows the default branch. A pinned tag changes only when you
-change it, which makes deploys and rollbacks explicit; Railway's image auto
-updates can redeploy `latest` when a new image is pushed.
+`latest` follows the default branch, and it moves only after the image passed
+the smoke tests natively on amd64 and arm64: the publish workflow pushes the
+immutable `sha-<commit>` tag first, and a separate job adds `latest` once both
+smoke tests are green. With Railway's image auto-update enabled on `latest`,
+every tested merge is deployed. A pinned `sha-<commit>` tag changes only when
+you change it, which makes deploys and rollbacks explicit.
 
 ## 2. Attach a volume at `/data`
 
@@ -45,7 +48,8 @@ snapshots; 1 GB is plenty to start.
 | `FOLIO_TOKENS` | `alice:<token>,bob:<token>` (or a single `FOLIO_TOKEN`); generate each token with `openssl rand -hex 32` |
 | `RAILWAY_RUN_UID` | `0` |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | `90` |
-| `FOLIO_OPENROUTER_API_KEY` | optional: enables the AI reviewer |
+| `FOLIO_OPENROUTER_API_KEY` | optional: enables the AI reviewer and the web UI assistants |
+| `FOLIO_UI_PASSWORD` | optional: enables the web UI at `/ui` (at least 12 characters); generate it with `openssl rand -base64 24` |
 | `FOLIO_RENDER_CONCURRENCY` | optional: about (service memory − 1 GiB) / 1 GiB; the default `2` suits 3 GB or more |
 
 Why the two Railway variables:
@@ -72,6 +76,24 @@ printf 'alice:%s' "$(openssl rand -hex 32)" | railway variable set --service fol
 
 Keep a copy of the tokens in your password manager: agents need them.
 
+The web UI needs only `FOLIO_UI_PASSWORD`; pipe it in so it never lands in
+your shell history:
+
+```sh
+openssl rand -base64 24 | tr -d '\n' | railway variable set --service folio --stdin FOLIO_UI_PASSWORD
+```
+
+Without the variable `/ui` answers 404. Sessions live in memory, so a deploy
+signs everyone out.
+
+Railway's proxy connects to the container from a private address (100.64.0.0/10 or the
+fd00::/8 private network), which is inside Folio's default `FOLIO_TRUSTED_PROXIES`, so
+sign-in rate limits apply per visitor (`X-Forwarded-For`). Confirm it once after the first
+deploy: with `FOLIO_LOG_LEVEL=debug` the first sign-in logs
+`web UI login: client address source for rate limiting source=x-forwarded-for`. If it says
+`source=peer`, add the proxy's address range to `FOLIO_TRUSTED_PROXIES`; otherwise all
+visitors share one limit of five attempts a minute.
+
 ## 4. Domain and health check
 
 **Service → Settings → Networking**: add your custom domain
@@ -95,7 +117,7 @@ redeploys the current image). Then:
 
 ```sh
 curl https://folio.example.com/healthz
-# {"status":"ok","version":"sha-…","sandbox":"landlock+rlimits","schema_version":1,"reviewer":false}
+# {"status":"ok","version":"sha-…","sandbox":"landlock+rlimits","schema_version":2,"reviewer":false}
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://folio.example.com/mcp   # 401
 ```
 
@@ -122,17 +144,26 @@ instance) to inspect or recover documents.
 
 ## Upgrades and rollback
 
-Every push to the default branch publishes `sha-<commit>` and `latest`;
-releases publish `<version>` tags. To upgrade, point the service at the new
-tag (or redeploy `latest`). To roll back, point it at the previous tag:
+Every push to the default branch publishes `sha-<commit>`; `latest` and
+`main` are added to that digest only after the native smoke tests on both
+architectures pass. Releases publish `<version>` tags. To upgrade, point the
+service at the new tag (or let auto-update follow `latest`).
+
+Before upgrading across a schema migration (the CHANGELOG says so; migration
+0002 adds the web UI activity feed and is the first), take a **volume backup**
+(**Volume → Backups**): a migrated database cannot be opened by the previous
+binary. To roll back, point the service at the previous tag:
 
 ```sh
 railway service source connect --service folio --image ghcr.io/vocdoni/folio:sha-<previous>
 ```
 
 or use **Deployments → Rollback** in the dashboard. A Folio binary refuses to
-open a database written by a newer schema version: when a release changed
-the schema, roll back the volume (backup) together with the image.
+open a database written by a newer schema version, so after migration 0002
+a rollback means restoring the volume backup taken before the upgrade **and**
+setting the previous `sha-<commit>` image; rolling back the image alone
+leaves a service that will not start. Turn auto-update off while you do this,
+or it will redeploy `latest`.
 
 ## Troubleshooting
 
@@ -143,4 +174,7 @@ the schema, roll back the volume (backup) together with the image.
 | Deploy never becomes healthy | check the logs for the tool self-test; use the published image (it ships the right pandoc and typst) |
 | Renders fail with `busy` | raise `FOLIO_RENDER_CONCURRENCY` (and the service memory) or `FOLIO_RENDER_QUEUE` |
 | Download links point to the wrong host | fix `FOLIO_PUBLIC_URL` |
+| `/ui` answers 404 | `FOLIO_UI_PASSWORD` is not set (or shorter than 12 characters: the deploy log says so) |
+| Everyone is locked out of sign-in after a few wrong attempts | the proxy's address is not in `FOLIO_TRUSTED_PROXIES` (see step 3) |
+| The UI signs everyone out after a deploy | expected: sessions live in memory |
 | Long renders cut off during deploys | raise `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` to at least `FOLIO_RENDER_TIMEOUT` + 20 s |

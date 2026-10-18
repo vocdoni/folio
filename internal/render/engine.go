@@ -337,6 +337,28 @@ func readPages(job *Job) ([][]byte, error) {
 	return out, nil
 }
 
+// DOCXToMarkdown converts an uploaded DOCX to Markdown with pandoc
+// --sandbox (the web UI's template-draft example; images are not
+// extracted). The caller holds a render slot.
+func (e *Engine) DOCXToMarkdown(ctx context.Context, docx []byte) (string, error) {
+	job, err := e.NewJob()
+	if err != nil {
+		return "", err
+	}
+	defer job.Remove() //nolint:errcheck // best effort
+	if err := job.WriteFile("in.docx", docx); err != nil {
+		return "", err
+	}
+	if _, err := e.run(ctx, job, e.cfg.Pandoc, nil, "--sandbox", "-f", "docx", "-t", "markdown-raw_html-raw_attribute", "-o", "out.md", "in.docx"); err != nil {
+		return "", err
+	}
+	b, err := job.ReadFile("out.md")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 // SVGToPNG rasterises a sanitised SVG at 300 ppi with typst (PNG rendition
 // for the DOCX path).
 func (e *Engine) SVGToPNG(ctx context.Context, svg []byte) ([]byte, error) {

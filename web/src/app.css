@@ -1,0 +1,542 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Folio web UI: the proofing room. Tokens, base type and the shared
+   building blocks (sheets, proofs, buttons, fields). Component styles live in
+   their .svelte files. No inline styles anywhere: the CSP is style-src 'self'. */
+
+@font-face {
+  font-family: 'Schibsted Grotesk';
+  src: url('./fonts/SchibstedGrotesk-latin.woff2') format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Palette: print process colours on a sage-grey workbench. */
+  --paper: #ffffff; /* sheets */
+  --paper-2: #f5f7f6; /* quiet fills inside sheets */
+  --table: #e9edeb; /* the workbench */
+  --table-2: #dde3e0; /* pressed / hover on the bench */
+  --ink: #1c2421; /* text */
+  --ink-2: #4e5a55; /* secondary text (AA on table and paper) */
+  --rule: #c7cfcb; /* hairlines */
+  --rule-strong: #7d8984; /* input borders (3:1) */
+  --magenta: #c8246b; /* primary actions, registration accent */
+  --magenta-deep: #a81d59; /* hover/pressed */
+  --magenta-tint: #fbe9f1;
+  --cyan: #0b7fab; /* info, live (fills and marks) */
+  --cyan-ink: #086e94; /* links and info text (AA on table) */
+  --cyan-tint: #e3f2f8;
+  --yellow: #e8b500; /* warnings (fill, ink text on it) */
+  --yellow-tint: #fdf4d6;
+  --error: #b3261e;
+  --error-tint: #fbeae9;
+
+  /* Type: one family with tabular figures; modular scale 1.2. */
+  --font: 'Schibsted Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+  --fs-0: 0.8125rem; /* 13 */
+  --fs-1: 0.9375rem; /* 15 body */
+  --fs-2: 1.125rem; /* 18 */
+  --fs-3: 1.35rem; /* 21.6 */
+  --fs-4: 1.62rem; /* 25.9 */
+  --fs-5: 1.944rem; /* 31.1 */
+  --fs-6: 2.333rem; /* 37.3 */
+
+  /* Space: 4 px base. */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+
+  --radius: 2px; /* paper has square-ish corners */
+  --radius-control: 4px;
+  --sheet-shadow: 0 1px 0 rgba(28, 36, 33, 0.08), 0 10px 22px -14px rgba(28, 36, 33, 0.45);
+  --focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--magenta);
+  --page-max: 1360px;
+  --masthead-h: 3.5rem;
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font);
+  font-size: 100%;
+  color: var(--ink);
+  background: var(--table);
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  /* The face's default figures are tabular (wide punctuation): use
+     proportional figures in text, tabular only in aligned columns. */
+  font-variant-numeric: proportional-nums;
+}
+
+body {
+  margin: 0;
+  font-size: var(--fs-1);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--fs-5);
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: var(--fs-3);
+}
+
+h3 {
+  font-size: var(--fs-2);
+}
+
+p {
+  margin: 0;
+  max-width: 72ch;
+}
+
+a {
+  color: var(--cyan-ink);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: var(--radius-control);
+}
+
+/* Tabular figures only where columns of numbers must align: in this face
+   tabular punctuation is figure-wide, so prose numbers stay proportional. */
+td.num,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--ink-2);
+}
+
+.small {
+  font-size: var(--fs-0);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-4);
+  top: -3rem;
+  z-index: 50;
+  background: var(--ink);
+  color: var(--paper);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--radius-control);
+}
+
+.skip-link:focus {
+  top: var(--s-2);
+}
+
+/* ---- page frame ---- */
+
+.page {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--s-6) clamp(1rem, 3vw, 2.5rem) var(--s-7);
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-4) var(--s-6);
+  margin-bottom: var(--s-6);
+}
+
+.page-head p {
+  margin-top: var(--s-2);
+  color: var(--ink-2);
+}
+
+.page-head .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ---- sheets: white paper on the bench (forms, panels) ---- */
+
+.sheet {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--s-5);
+}
+
+.sheet + .sheet {
+  margin-top: var(--s-5);
+}
+
+.sheet-title {
+  font-size: var(--fs-2);
+  font-weight: 700;
+  margin-bottom: var(--s-4);
+}
+
+/* ---- proofs: true-aspect rendered pages with crop marks on hover/focus ---- */
+
+.proof {
+  --mark: var(--ink-2);
+  --gap: 7px;
+  --len: 11px;
+  position: relative;
+  display: block;
+  background: var(--paper);
+  box-shadow: var(--sheet-shadow);
+  aspect-ratio: 210 / 297;
+}
+
+.proof.letter {
+  aspect-ratio: 216 / 279;
+}
+
+.proof img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.proof::before {
+  /* Crop marks: two ticks at each corner, outside the sheet. */
+  content: '';
+  position: absolute;
+  inset: calc(-1 * (var(--gap) + var(--len)));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  background:
+    linear-gradient(var(--mark), var(--mark)) left calc(var(--gap) + var(--len)) top 0 / 1px var(--len),
+    linear-gradient(var(--mark), var(--mark)) left 0 top calc(var(--gap) + var(--len)) / var(--len) 1px,
+    linear-gradient(var(--mark), var(--mark)) right calc(var(--gap) + var(--len)) top 0 / 1px var(--len),
+    linear-gradient(var(--mark), var(--mark)) right 0 top calc(var(--gap) + var(--len)) / var(--len) 1px,
+    linear-gradient(var(--mark), var(--mark)) left calc(var(--gap) + var(--len)) bottom 0 / 1px var(--len),
+    linear-gradient(var(--mark), var(--mark)) left 0 bottom calc(var(--gap) + var(--len)) / var(--len) 1px,
+    linear-gradient(var(--mark), var(--mark)) right calc(var(--gap) + var(--len)) bottom 0 / 1px var(--len),
+    linear-gradient(var(--mark), var(--mark)) right 0 bottom calc(var(--gap) + var(--len)) / var(--len) 1px;
+  background-repeat: no-repeat;
+}
+
+:where(a, button):hover > .proof::before,
+:where(a, button):focus-visible > .proof::before,
+.proof.marked::before {
+  opacity: 1;
+}
+
+.proof .blank {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  text-align: center;
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+}
+
+/* ---- buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 2.5rem;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--magenta);
+  border-color: var(--magenta);
+  color: var(--paper);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--magenta-deep);
+  border-color: var(--magenta-deep);
+}
+
+.btn.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+  padding: 0 var(--s-2);
+}
+
+.btn.quiet:hover {
+  background: var(--table-2);
+}
+
+.btn.danger {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.btn.danger.solid {
+  background: var(--error);
+  color: var(--paper);
+}
+
+.btn.small {
+  min-height: 2rem;
+  padding: 0 var(--s-3);
+  font-size: var(--fs-0);
+}
+
+.btn svg {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+}
+
+/* ---- fields ---- */
+
+.field {
+  display: grid;
+  gap: var(--s-1);
+  margin-bottom: var(--s-4);
+}
+
+.field > label,
+.field > .label,
+fieldset > legend {
+  font-weight: 600;
+  font-size: var(--fs-0);
+}
+
+.field .help {
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+
+.field .error-text {
+  font-size: var(--fs-0);
+  color: var(--error);
+}
+
+.req {
+  color: var(--magenta);
+  font-weight: 700;
+}
+
+input[type='text'],
+input[type='password'],
+input[type='search'],
+input[type='url'],
+input[type='date'],
+input[type='number'],
+select,
+textarea {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+textarea {
+  line-height: 1.45;
+  resize: vertical;
+}
+
+textarea.code,
+.code {
+  font-family: var(--mono);
+  font-size: var(--fs-0);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--magenta);
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--error);
+  box-shadow: inset 0 0 0 1px var(--error);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--magenta);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 500;
+}
+
+fieldset {
+  border: 0;
+  margin: 0 0 var(--s-4);
+  padding: 0;
+  min-width: 0;
+}
+
+fieldset > legend {
+  padding: 0;
+  margin-bottom: var(--s-2);
+}
+
+/* ---- notes: info, warnings, errors ---- */
+
+.note {
+  border-left: 3px solid var(--cyan);
+  background: var(--cyan-tint);
+  padding: var(--s-3) var(--s-4);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.note.warn {
+  border-color: var(--yellow);
+  background: var(--yellow-tint);
+}
+
+.note.error {
+  border-color: var(--error);
+  background: var(--error-tint);
+}
+
+.note p + p {
+  margin-top: var(--s-1);
+}
+
+/* ---- status chips ---- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.1em 0.55em;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  background: var(--paper);
+}
+
+.chip.published {
+  border-color: var(--cyan-ink);
+  color: var(--cyan-ink);
+  background: var(--cyan-tint);
+}
+
+.chip.trashed {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.chip.ai {
+  border-color: var(--yellow);
+  background: var(--yellow-tint);
+}
+
+/* ---- tables ---- */
+
+table.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-1);
+}
+
+table.ledger th,
+table.ledger td {
+  text-align: left;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+table.ledger th {
+  font-size: var(--fs-0);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

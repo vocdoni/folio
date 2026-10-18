@@ -34,6 +34,15 @@ Planned as 0.1.0, the first release.
 - Public capability download links, `/healthz`, retention, blob garbage
   collection and SQLite snapshots.
 - Optional advisory AI visual reviewer through OpenRouter.
+- Web UI at `/ui` behind `FOLIO_UI_PASSWORD`: documents as page proofs with
+  PDF and DOCX downloads, create from Markdown, template studio with live
+  proof, brands and images; server-side sessions, CSRF and Origin checks, rate
+  limits and a strict CSP.
+- AI assistants in the web UI (draft a template, fill in from text, suggest
+  a brand) through OpenRouter; proposals only, nothing saved until you save,
+  with daily and per-session quotas.
+- Activity log and live feed of every MCP tool call and UI change (ids,
+  names, outcomes, durations; retention `FOLIO_ACTIVITY_RETENTION`).
 - Docker image for linux/amd64 and linux/arm64, docker compose file and
   Railway guide.
 - Agent Skill (`skills/folio`) and Claude Code plugin (`.claude-plugin`).

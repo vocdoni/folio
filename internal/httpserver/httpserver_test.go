@@ -291,3 +291,73 @@ func TestServeDrainsInFlightRequests(t *testing.T) {
 		t.Fatalf("Serve: %v", err)
 	}
 }
+
+// TestServeRunsBeforeShutdownFirst: a stream that only ends when the
+// beforeShutdown hook runs does not hold up the drain.
+func TestServeRunsBeforeShutdownFirst(t *testing.T) {
+	started, streamEnd := make(chan struct{}), make(chan struct{})
+	stream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		close(started)
+		<-streamEnd
+	})
+	h, _ := newTestHandler(t, Options{Tokens: tokens, MCP: stream})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Serve(ctx, ln, h, 30*time.Second, slog.New(slog.DiscardHandler), func() { close(streamEnd) })
+	}()
+	go func() {
+		req, _ := http.NewRequest(http.MethodPost, "http://"+ln.Addr().String()+"/mcp", nil)
+		req.Header.Set("Authorization", "Bearer "+tokA)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+	}()
+	<-started
+	start := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil || time.Since(start) > 5*time.Second {
+			t.Fatalf("Serve: %v after %s", err, time.Since(start))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the open stream held up the drain")
+	}
+}
+
+// TestUIMount (B-AC1): without a UI handler /ui and /ui/api/* are plain 404s
+// and / stays a 404; with one, /ui* reaches it and / redirects to /ui/.
+func TestUIMount(t *testing.T) {
+	get := func(h http.Handler, path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+	off, _ := newTestHandler(t, Options{Tokens: tokens})
+	for _, p := range []string{"/ui", "/ui/", "/ui/api/session", "/ui/api/login", "/"} {
+		if w := get(off, p); w.Code != http.StatusNotFound {
+			t.Errorf("UI disabled: GET %s = %d", p, w.Code)
+		}
+	}
+	ui := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ui:"+r.URL.Path) })
+	on, _ := newTestHandler(t, Options{Tokens: tokens, UI: ui})
+	for _, p := range []string{"/ui", "/ui/", "/ui/api/session"} {
+		if w := get(on, p); w.Code != 200 || w.Body.String() != "ui:"+p {
+			t.Errorf("UI enabled: GET %s = %d %q", p, w.Code, w.Body)
+		}
+	}
+	if w := get(on, "/"); w.Code != http.StatusFound || w.Header().Get("Location") != "/ui/" {
+		t.Errorf("root redirect: %d %v", w.Code, w.Header())
+	}
+	if w := get(on, "/healthz"); w.Code != 200 {
+		t.Errorf("healthz: %d", w.Code)
+	}
+}

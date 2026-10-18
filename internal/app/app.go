@@ -22,6 +22,8 @@ import (
 	"time"
 
 	bundled "github.com/vocdoni/folio/assets"
+	"github.com/vocdoni/folio/internal/activity"
+	"github.com/vocdoni/folio/internal/ai"
 	"github.com/vocdoni/folio/internal/assets"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/checks"
@@ -37,6 +39,7 @@ import (
 	"github.com/vocdoni/folio/internal/seed"
 	"github.com/vocdoni/folio/internal/store"
 	"github.com/vocdoni/folio/internal/validate"
+	"github.com/vocdoni/folio/internal/webui"
 )
 
 // Options are the parts of the wiring that are not configuration.
@@ -62,6 +65,11 @@ type App struct {
 	Documents   *documents.Service
 	Assets      *assets.Service
 	Maintenance maintenance.Config
+	Activity    *activity.Recorder
+	Broadcaster *activity.Broadcaster
+	stopRec     context.CancelFunc
+	recDone     chan struct{}
+	closeUI     func() // cancels web UI jobs; nil without the UI
 	Seeded      bool
 	log         *slog.Logger
 }
@@ -99,7 +107,11 @@ func MemoryLimit(read func(string) ([]byte, error)) (limit uint64, ok bool) {
 // logMemoryBudget logs concurrency × per-process memory against the cgroup
 // limit and warns when the renders could exceed it.
 func logMemoryBudget(log *slog.Logger, cfg *config.Config, read func(string) ([]byte, error)) {
-	total := uint64(cfg.RenderConcurrency) * cfg.RenderMemory
+	slots := cfg.RenderConcurrency
+	if cfg.UIEnabled() {
+		slots += cfg.UIPreviewConcurrency // the web UI preview queue
+	}
+	total := uint64(slots) * cfg.RenderMemory
 	limit, ok := MemoryLimit(read)
 	attrs := []any{"render_concurrency", cfg.RenderConcurrency, "render_memory_bytes", cfg.RenderMemory, "render_total_bytes", total}
 	if !ok {
@@ -152,7 +164,8 @@ func newReviewer(cfg *config.Config, injected review.Reviewer, log *slog.Logger)
 		log.Info("ai reviewer disabled (set FOLIO_OPENROUTER_API_KEY to enable it)")
 		return nil, nil
 	}
-	or, err := review.NewOpenRouter(review.OpenRouterConfig{APIKey: cfg.OpenRouterAPIKey, Model: cfg.ReviewModel, MaxPages: cfg.ReviewMaxPages})
+	or, err := review.NewOpenRouter(review.OpenRouterConfig{APIKey: cfg.OpenRouterAPIKey, Model: cfg.ReviewModel, MaxPages: cfg.ReviewMaxPages,
+		BaseURL: cfg.OpenRouterBaseURL})
 	if err != nil {
 		return nil, fmt.Errorf("app: %w", err)
 	}
@@ -219,17 +232,24 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		return nil, err
 	}
 	queue := render.NewQueue(cfg.RenderConcurrency, cfg.RenderQueue)
+	// Web UI previews and example conversions get their own small queue so
+	// they can never take a render slot from agents.
+	previewQueue := render.NewQueue(cfg.UIPreviewConcurrency, 4)
 	as := &assets.Service{DB: db, Blobs: blobs, Fetcher: assets.NewFetcher(cfg.MaxAssetBytes), Raster: engine, MaxBytes: cfg.MaxAssetBytes, Now: o.Now}
 	pipeline := render.NewPipeline(render.PipelineConfig{Engine: engine, Queue: queue, Assets: as,
 		Limits:   validate.Limits{MaxMarkdownBytes: cfg.MaxMarkdownBytes, MaxNesting: cfg.MaxNesting, MaxTableCells: cfg.MaxTableCells},
 		MaxPages: cfg.MaxPages})
 	cat := &catalog.Service{DB: db, Blobs: blobs, Renderer: pipeline, Assets: as, PackagesDir: rt.PackagesDir, Now: o.Now,
 		PreviewTTL: cfg.PreviewRetention, PreviewPagesMax: cfg.PreviewPagesStored}
+	previewCat := *cat
+	previewCat.Renderer = render.NewPipeline(render.PipelineConfig{Engine: engine, Queue: previewQueue, Assets: as,
+		Limits:   validate.Limits{MaxMarkdownBytes: cfg.MaxMarkdownBytes, MaxNesting: cfg.MaxNesting, MaxTableCells: cfg.MaxTableCells},
+		MaxPages: cfg.MaxPages})
 	docs := &documents.Service{DB: db, Blobs: blobs, Renderer: pipeline, Resolver: cat, Now: o.Now,
 		PreviewPages: cfg.PreviewPagesStored, GCGrace: cfg.BlobGCGrace}
 	mc := maintenance.Config{Documents: docs, DB: db, BackupDir: filepath.Join(cfg.DataDir, "backups"), JobRoot: o.JobRoot,
 		JobMaxAge: 3 * cfg.RenderTimeout, TrashRetention: cfg.TrashRetention, BackupInterval: cfg.BackupInterval,
-		BackupKeep: cfg.BackupKeep, Now: o.Now, Logger: log}
+		BackupKeep: cfg.BackupKeep, ActivityRetention: cfg.ActivityRetention, Now: o.Now, Logger: log}
 	if err := maintenance.Startup(ctx, mc); err != nil {
 		return nil, err
 	}
@@ -247,18 +267,48 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	if err != nil {
 		return nil, err
 	}
+	bc := activity.NewBroadcaster()
+	rec := activity.NewRecorder(db, bc, log, o.Now)
 	srv := mcpserver.New(&mcpserver.Deps{Catalog: cat, Documents: docs, Assets: as, Validator: pipeline, Raster: engine, Queue: queue,
-		Blobs: blobs, DB: db, Reviewer: rv, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
+		Blobs: blobs, DB: db, Reviewer: rv, Activity: rec, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
 		Logger: log, Now: o.Now, ProgressInterval: o.ProgressInterval})
+	var ui http.Handler
+	var uiClose func()
+	if cfg.UIEnabled() {
+		var assistant *ai.Client
+		if cfg.OpenRouterAPIKey != "" {
+			if assistant, err = ai.New(ai.Config{APIKey: cfg.OpenRouterAPIKey, Model: cfg.AIModel, BaseURL: cfg.OpenRouterBaseURL}); err != nil {
+				return nil, fmt.Errorf("app: %w", err)
+			}
+			log.Info("web UI assistants enabled: content you send to an assistant goes to OpenRouter", "model", cfg.AIModel)
+		}
+		ws, err := webui.New(webui.Options{Config: cfg, DB: db, Blobs: blobs, Catalog: cat, Documents: docs, Assets: as,
+			Validator: pipeline, Raster: engine, Queue: queue, Preview: &previewCat, PreviewQueue: previewQueue, Convert: engine, Activity: rec, Broadcaster: bc, AI: assistant,
+			Reviewer: rv != nil, Version: o.Version, Sandbox: string(level), Packages: packages, Logger: log, Now: o.Now})
+		if err != nil {
+			return nil, err
+		}
+		ui, uiClose = ws, ws.Close
+		log.Info("web UI enabled", "path", "/ui/")
+	}
 	h, err := httpserver.NewHandler(httpserver.Options{
-		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth,
+		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth, UI: ui,
 		Files: docs, MaxRequestBytes: cfg.MaxRequestBytes, Logger: log, Ping: db.R.PingContext,
 		Health: httpserver.Health{Version: o.Version, Sandbox: string(level), SchemaVersion: store.SchemaVersion(), Reviewer: rv != nil},
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &App{Config: cfg, Handler: h, DB: db, Catalog: cat, Documents: docs, Assets: as, Maintenance: mc, Seeded: seeded, log: log}, nil
+	// The activity writer runs until Close, so it outlives the HTTP drain
+	// and records the last calls.
+	rctx, stopRec := context.WithCancel(context.WithoutCancel(ctx))
+	recDone := make(chan struct{})
+	go func() {
+		defer close(recDone)
+		rec.Run(rctx)
+	}()
+	return &App{Config: cfg, Handler: h, DB: db, Catalog: cat, Documents: docs, Assets: as, Maintenance: mc,
+		Activity: rec, Broadcaster: bc, stopRec: stopRec, recDone: recDone, closeUI: uiClose, Seeded: seeded, log: log}, nil
 }
 
 // Run serves on ln until ctx is cancelled, with the periodic maintenance and,
@@ -287,11 +337,25 @@ func (a *App) Run(ctx context.Context, ln net.Listener) error {
 		}()
 	}
 	a.log.Info("listening", "addr", ln.Addr().String(), "public_url", a.Config.PublicURL)
-	err := httpserver.Serve(ctx, ln, a.Handler, a.Config.RenderTimeout+20*time.Second, a.log)
+	// Live activity streams are closed before the drain starts.
+	beforeShutdown := []func(){a.Broadcaster.Close}
+	if a.closeUI != nil {
+		beforeShutdown = append(beforeShutdown, a.closeUI)
+	}
+	err := httpserver.Serve(ctx, ln, a.Handler, a.Config.RenderTimeout+20*time.Second, a.log, beforeShutdown...)
 	stop()
 	<-maintDone // the caller closes the database next
 	return err
 }
 
-// Close closes the database.
-func (a *App) Close() error { return a.DB.Close() }
+// Close stops web UI jobs, flushes and stops the activity writer, then
+// closes the database. Call it after Run returns (the HTTP drain is over),
+// so the rows of the last calls are written.
+func (a *App) Close() error {
+	if a.closeUI != nil {
+		a.closeUI()
+	}
+	a.stopRec()
+	<-a.recDone
+	return a.DB.Close()
+}

@@ -35,6 +35,7 @@ Folio is licensed under the GNU Affero General Public License v3.0 only
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Connecting agents](#connecting-agents)
+- [Web UI](#web-ui)
 - [Worked examples](#worked-examples)
 - [Upgrading from the money-computing contract](#upgrading-from-the-money-computing-contract)
 - [Security model](#security-model)
@@ -87,7 +88,7 @@ docker run -d --name folio -p 127.0.0.1:8080:8080 \
   ghcr.io/vocdoni/folio:latest
 
 curl http://localhost:8080/healthz
-# {"status":"ok","version":"…","sandbox":"landlock+rlimits","schema_version":1,"reviewer":false}
+# {"status":"ok","version":"…","sandbox":"landlock+rlimits","schema_version":2,"reviewer":false}
 ```
 
 On first start Folio seeds the starter brand and templates. Then connect an
@@ -172,6 +173,15 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_OPENROUTER_API_KEY` | — | enables the optional AI reviewer |
 | `FOLIO_REVIEW_MODEL` | `google/gemma-4-31b-it` | OpenRouter model used by the reviewer |
 | `FOLIO_REVIEW_MAX_PAGES` | `20` | pages per review call |
+| `FOLIO_OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API root; change it only for tests or an outbound proxy |
+| `FOLIO_UI_PASSWORD` | — | enables the [web UI](#web-ui) at `/ui` (at least 12 characters); unset, `/ui` returns 404 |
+| `FOLIO_UI_SESSION_TTL` | `12h` | web UI sessions expire after this much inactivity |
+| `FOLIO_UI_PREVIEW_CONCURRENCY` | `1` | render slots for web UI previews and example-file conversion (separate from `FOLIO_RENDER_CONCURRENCY`) |
+| `FOLIO_TRUSTED_PROXIES` | private and loopback ranges | comma-separated CIDRs whose `X-Forwarded-For` is trusted for login rate limiting; `none` trusts no proxy |
+| `FOLIO_ACTIVITY_RETENTION` | `720h` | activity feed entries older than this are deleted |
+| `FOLIO_AI_MODEL` | `FOLIO_REVIEW_MODEL` | OpenRouter model for the web UI assistants (vision-capable for PDF examples and logos) |
+| `FOLIO_AI_DAILY_CALLS` | `200` | web UI assistant jobs per UTC day for the whole instance |
+| `FOLIO_AI_SESSION_CALLS` | `30` | web UI assistant jobs per signed-in session per hour |
 | `FOLIO_PANDOC`, `FOLIO_TYPST` | found on `PATH` | paths of the pandoc and typst binaries (the image ships both) |
 
 Sizes accept `KiB`, `MiB`, `GiB` or a byte count; durations are Go
@@ -266,6 +276,76 @@ use OAuth, which Folio does not implement.
 Clients that cannot send a static bearer header cannot connect, because Folio does
 not implement OAuth: ChatGPT connectors, and any custom-connector setup that offers
 OAuth only.
+
+## Web UI
+
+Set `FOLIO_UI_PASSWORD` (at least 12 characters) and open
+`https://folio.example.com/ui/` (the root redirects there). Without the
+variable `/ui` does not exist. Everyone signs in with that one password;
+there are no user accounts.
+
+- **Overview and Activity.** Every MCP tool call (reads included) and every
+  change made in the UI, live: who, what, on which item, how it ended and
+  how long it took. Entries hold ids, names, outcomes and durations only,
+  never document content or tokens, and are deleted after
+  `FOLIO_ACTIVITY_RETENTION`.
+- **Documents.** Every rendered document as a page proof. Read it page by
+  page, download the PDF or DOCX, copy the share link, see revisions and
+  warnings, publish, move to the trash, restore or delete permanently.
+- **Create.** Paste or upload Markdown, pick a template, fill in the details
+  and the tables in a form, render and download. The result is an ordinary
+  Folio document, revisable by agents.
+- **Templates and the studio.** Edit sections, details, tables, layout
+  options, the starting outline, the sample and the labels with a live proof
+  of the sample next to the form (it re-renders 800 ms after you stop
+  typing). Saving creates a new version; the JSON and a custom Typst layout
+  stay available for experts.
+- **Brands and images.** Colour pickers, specimens of the bundled fonts,
+  logo upload, header and footer, with a live specimen page.
+- **Settings.** Version, sandbox level, assistant status and the commands
+  that connect an agent to this instance.
+
+### Assistants
+
+With `FOLIO_OPENROUTER_API_KEY` set, the UI offers three assistants (model
+`FOLIO_AI_MODEL`, by default the reviewer's model; if drafts are weak, pick
+a stronger one):
+
+- **Draft a template** from a description and, optionally, an example
+  (Markdown, Word or PDF). The draft is checked and its sample rendered
+  exactly as `create_template` would, then opens unsaved in the studio.
+- **Fill in from my text** on the Create screen proposes the template, the
+  details and the tables for your Markdown. Values that do not appear word
+  for word in your text are highlighted for checking; the Markdown itself is
+  never changed.
+- **Suggest a brand** from an uploaded logo (Folio extracts its colours
+  itself) or from a website (Folio reads the page's title, colours and logo
+  candidates through the same guarded fetcher as asset URLs; a logo is
+  downloaded only when you pick it).
+
+Assistant answers are proposals: nothing is saved until you save it. What
+you hand an assistant (text, an example file, a logo, a website's colours)
+is sent to OpenRouter with data collection denied, only when you ask.
+Limits: `FOLIO_AI_DAILY_CALLS` per day for the instance and
+`FOLIO_AI_SESSION_CALLS` per hour for each sign-in; at most one request runs
+per session and four per instance.
+
+### Security
+
+- The password is compared in constant time; sign-in attempts are limited
+  to five a minute per client address and sixty a minute in total. Behind a
+  proxy, `X-Forwarded-For` is trusted only from `FOLIO_TRUSTED_PROXIES`.
+- Sessions are random 256-bit ids kept in memory (a restart signs everyone
+  out), in an `HttpOnly`, `SameSite=Strict` cookie scoped to `/ui` and
+  `Secure` when `FOLIO_PUBLIC_URL` is https; they expire after
+  `FOLIO_UI_SESSION_TTL` of inactivity.
+- Every change needs the `X-Folio-UI` header and a same-origin `Origin`.
+  Pages carry a strict Content-Security-Policy (`'self'` only, no inline
+  script or style, no framing). The UI loads nothing from other sites.
+- Template previews are rendered in a separate queue
+  (`FOLIO_UI_PREVIEW_CONCURRENCY`) so the UI never takes a render slot from
+  agents, and kept in memory for ten minutes, never stored.
+
 
 ## Worked examples
 
@@ -555,6 +635,9 @@ schedules. Folio now lays out exactly what you send:
   tokens have the same rights: a token holder can read and change everything
   on the instance. Rotate a token by changing the variable and restarting.
   Folio has no OAuth, users or roles.
+- **Web UI.** Off unless `FOLIO_UI_PASSWORD` is set; one shared password,
+  rate-limited sign-in, server-side sessions, CSRF header and Origin
+  checks, strict CSP (see [Web UI](#web-ui)).
 - **Download links are capabilities.** `/f/<id>/<name>` needs no token: the
   122-bit random id is the only secret. Anyone holding a link can download
   that file. Links are not indexable (`X-Robots-Tag`, `robots.txt`), are not
@@ -575,9 +658,10 @@ schedules. Folio now lays out exactly what you send:
   `rlimits-only`.
 - **AI reviewer privacy.** Page images leave the instance only when
   `FOLIO_OPENROUTER_API_KEY` is set and `review_document` runs or a
-  template is created or updated. Requests go to OpenRouter with provider
-  data collection denied; findings are advisory and never change a
-  document.
+  template is created or updated. The web UI assistants send the text,
+  example file, logo or website colours you hand them, only when you ask.
+  Requests go to OpenRouter with provider data collection denied; findings
+  are advisory and never change a document.
 - **Logs** contain tool names, actors, outcomes and durations, never tokens,
   document content or download links.
 
@@ -612,7 +696,18 @@ make generate     # regenerate skills/folio from the guides
 make docker       # build the image as folio:dev
 make docker-smoke # build it and run scripts/docker-smoke.sh
 make run          # serve locally with a throwaway token and ./data
+make ui           # build the web UI into internal/webui/dist (Node 24)
+make ui-check     # svelte-check and the UI unit tests
+make dev-ui       # Vite dev server on :5173, API proxied to make run
 ```
+
+The web UI lives in `web/` (Svelte 5, TypeScript, Vite). `make ui` writes
+the build into `internal/webui/dist`, which `make build` embeds; without it
+`/ui` answers "UI assets not built". For UI work run `FOLIO_UI_PASSWORD=…
+make run` in one terminal and `make dev-ui` in another, then open
+`http://localhost:5173/ui/`. The end-to-end tests
+(`scripts/ui-e2e.sh <image>`) run Playwright against a container with a
+stub OpenRouter.
 
 Tests that render need the pinned pandoc and typst: put them on `PATH` or
 set `FOLIO_PANDOC` and `FOLIO_TYPST`. Without them those tests are skipped

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/documents"
 	"github.com/vocdoni/folio/internal/model"
@@ -285,5 +286,25 @@ func TestRunAppliesRetentionAndBacksUp(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not stop")
+	}
+}
+
+func TestRetentionPassPrunesActivity(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	f.cfg.ActivityRetention = 720 * time.Hour
+	rec := activity.NewRecorder(f.cfg.DB, nil, f.cfg.Logger, f.clk.Now)
+	rec.Record(activity.Row{Source: activity.SourceMCP, Actor: "alice", Action: "get_guide", Outcome: activity.OutcomeOK})
+	f.clk.Add(721 * time.Hour)
+	rec.Record(activity.Row{Source: activity.SourceMCP, Actor: "alice", Action: "list_documents", Outcome: activity.OutcomeOK})
+	rctx, cancel := context.WithCancel(ctx)
+	cancel()
+	rec.Run(rctx) // flushes both rows
+	if _, _, err := RetentionPass(ctx, f.cfg); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err := activity.List(ctx, f.cfg.DB, activity.Filter{})
+	if err != nil || len(rows) != 1 || rows[0].Action != "list_documents" {
+		t.Fatalf("after retention: %+v %v", rows, err)
 	}
 }

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # Folio image: the folio binary plus the pinned, checksum-verified official
-# static pandoc and typst builds on Debian slim. Fonts, base layouts and
-# vendored Typst packages are embedded in the folio binary.
+# static pandoc and typst builds on Debian slim. Fonts, base layouts,
+# vendored Typst packages and the web UI are embedded in the folio binary.
 #
 #   docker build -t folio .
 #   docker buildx build --platform linux/amd64,linux/arm64 -t folio .
@@ -43,6 +43,14 @@ RUN set -eu; \
     chmod 0755 pandoc typst; \
     rm pandoc.tar.gz typst.tar.xz
 
+# ---- ui: the web UI (Svelte + Vite), embedded into the binary --------------
+FROM --platform=$BUILDPLATFORM node:24-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315 AS ui
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build -- --outDir /out/dist
+
 # ---- build: folio, cross-compiled on the build platform ------------------
 FROM --platform=$BUILDPLATFORM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e AS build
 ARG TARGETOS
@@ -52,6 +60,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+COPY --from=ui /out/dist internal/webui/dist
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.buildVersion=${VERSION}" -o /out/folio ./cmd/folio
