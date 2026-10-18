@@ -151,6 +151,12 @@ func (r *jobRunner) get(id, session string) (JobOut, bool) {
 	return j.JobOut, true
 }
 
+// result returns the finished result of a job of session.
+func (r *jobRunner) result(id, session string) (any, bool) {
+	out, ok := r.get(id, session)
+	return out.Result, ok && out.State == jobDone
+}
+
 // cancelSession cancels every running job of session (logout).
 func (r *jobRunner) cancelSession(session string) {
 	r.mu.Lock()

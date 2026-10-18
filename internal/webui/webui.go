@@ -49,12 +49,13 @@ type Options struct {
 	Catalog      *catalog.Service
 	Documents    *documents.Service
 	Assets       *assets.Service
-	Validator    catalog.Renderer // render.Pipeline (validate-only runs)
-	Raster       Rasterizer       // on-demand document pages
-	Queue        *render.Queue    // the MCP render queue (on-demand pages)
-	Preview      *catalog.Service // catalog bound to the UI preview pipeline (its own queue)
-	PreviewQueue *render.Queue    // that queue (example conversion takes a slot too)
-	Convert      Converter        // DOCX → Markdown and PDF pages for template-draft examples
+	Validator    catalog.Renderer     // render.Pipeline (validate-only runs)
+	Raster       Rasterizer           // on-demand document pages
+	Queue        *render.Queue        // the MCP render queue (on-demand pages)
+	Preview      *catalog.Service     // catalog bound to the UI preview pipeline (its own queue)
+	PreviewQueue *render.Queue        // that queue (example conversion takes a slot too)
+	Convert      Converter            // DOCX → Markdown and PDF pages for template-draft examples
+	FetchOptions []assets.FetchOption // web page fetches for brand suggestions (tests relax the address policy)
 	Activity     *activity.Recorder
 	Broadcaster  *activity.Broadcaster
 	AI           *ai.Client // nil: the assistants are off (no FOLIO_OPENROUTER_API_KEY)

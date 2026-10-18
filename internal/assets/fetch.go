@@ -143,32 +143,44 @@ func checkURL(u *url.URL) error {
 // Fetch downloads rawURL. Errors wrap ErrBadURL, ErrForbiddenAddress or ErrTooLarge
 // where applicable.
 func (f *Fetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
+	data, _, _, err := f.Get(ctx, rawURL, http.Header{"User-Agent": {"folio-asset-fetch"}})
+	return data, err
+}
+
+// Get downloads rawURL with the given request headers under the same rules
+// as Fetch and also returns the final URL (after redirects) and the
+// response Content-Type.
+func (f *Fetcher) Get(ctx context.Context, rawURL string, hdr http.Header) ([]byte, *url.URL, string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, ErrBadURL
+		return nil, nil, "", ErrBadURL
 	}
 	if err := checkURL(u); err != nil {
-		return nil, err
+		return nil, nil, "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, ErrBadURL
+		return nil, nil, "", ErrBadURL
 	}
-	req.Header.Set("User-Agent", "folio-asset-fetch")
+	for k, vs := range hdr {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch asset: %w", err)
+		return nil, nil, "", fmt.Errorf("fetch: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch asset: HTTP %d", resp.StatusCode)
+		return nil, nil, "", fmt.Errorf("fetch: HTTP %d", resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, f.maxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("fetch asset: read: %w", err)
+		return nil, nil, "", fmt.Errorf("fetch: read: %w", err)
 	}
 	if int64(len(data)) > f.maxBytes {
-		return nil, fmt.Errorf("%w: more than %d bytes", ErrTooLarge, f.maxBytes)
+		return nil, nil, "", fmt.Errorf("%w: more than %d bytes", ErrTooLarge, f.maxBytes)
 	}
-	return data, nil
+	return data, resp.Request.URL, resp.Header.Get("Content-Type"), nil
 }
