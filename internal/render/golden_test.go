@@ -3,13 +3,18 @@
 package render_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,9 +37,10 @@ func (g goldenAssets) Asset(_ context.Context, id string, _ bool) (model.Resolve
 	return model.ResolvedAsset{}, model.ErrAssetNotFound
 }
 
-// TestGoldenStarterTemplates (AC1): each starter sample renders twice to
-// identical PDF and DOCX bytes that match testdata/golden.json.
-func TestGoldenStarterTemplates(t *testing.T) {
+// starterPipeline builds a pipeline over the pinned tools with the seed logo,
+// and returns it with the seed brand and starter templates.
+func starterPipeline(t *testing.T) (*render.Pipeline, model.Brand, []model.Template) {
+	t.Helper()
 	pandoc, err := sandbox.LookupTool("pandoc")
 	if err != nil {
 		t.Skipf("SKIPPING: %v — set FOLIO_PANDOC to pandoc 3.12.1", err)
@@ -54,9 +60,8 @@ func TestGoldenStarterTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
 	svg := seed.Logo()
-	png, err := e.SVGToPNG(ctx, svg)
+	png, err := e.SVGToPNG(context.Background(), svg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,6 +77,14 @@ func TestGoldenStarterTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return p, brand, templates
+}
+
+// TestGoldenStarterTemplates (AC1): each starter sample renders twice to
+// identical PDF and DOCX bytes that match testdata/golden.json.
+func TestGoldenStarterTemplates(t *testing.T) {
+	p, brand, templates := starterPipeline(t)
+	ctx := context.Background()
 	type sums struct {
 		PDF  string `json:"pdf"`
 		DOCX string `json:"docx"`
@@ -125,5 +138,103 @@ func TestGoldenStarterTemplates(t *testing.T) {
 	}
 	if len(want) != len(got) {
 		t.Errorf("golden has %d templates, rendered %d", len(want), len(got))
+	}
+}
+
+// The proposal starter's DOCX opens with the cover (Title paragraph), then the
+// Folio-emitted table of contents after the cover's page break, and its
+// component tables carry content-proportional column widths instead of
+// pandoc's equal default grid.
+func TestStarterProposalDOCXFrontMatterAndTableWidths(t *testing.T) {
+	p, brand, templates := starterPipeline(t)
+	var tpl model.Template
+	for _, x := range templates {
+		if x.ID == "proposal" {
+			tpl = x
+		}
+	}
+	if tpl.ID == "" {
+		t.Fatal("no proposal starter template")
+	}
+	res, err := p.Render(context.Background(), render.Request{Template: tpl, TemplateVersion: 1, Brand: brand, BrandVersion: 1,
+		Input: model.DocumentInput{Markdown: tpl.Sample.Markdown, Metadata: tpl.Sample.Metadata, Data: tpl.Sample.Data}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(res.DOCX), int64(len(res.DOCX)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := map[string]string{}
+	for _, f := range zr.File {
+		if f.Name == "word/document.xml" || f.Name == "word/styles.xml" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts[f.Name] = string(b)
+		}
+	}
+	body := parts["word/document.xml"]
+	if body == "" || parts["word/styles.xml"] == "" {
+		t.Fatal("word/document.xml or word/styles.xml missing")
+	}
+	// The TOC heading uses the reference document's TOC Heading style; it must
+	// not add a second style with the same ID.
+	if n := strings.Count(parts["word/styles.xml"], `w:styleId="TOCHeading"`); n != 1 {
+		t.Fatalf("%d TOCHeading style definitions, want 1", n)
+	}
+	if !regexp.MustCompile(`<w:pStyle w:val="TOCHeading"\s*/>`).MatchString(body) {
+		t.Fatal("no TOC heading paragraph")
+	}
+	index := func(expr string) int {
+		if loc := regexp.MustCompile(expr).FindStringIndex(body); loc != nil {
+			return loc[0]
+		}
+		return -1
+	}
+	title := index(`<w:pStyle w:val="Title"\s*/>`)
+	pageBreak := index(`<w:br w:type="page"\s*/>`)
+	toc := index(`<w:docPartGallery w:val="Table of Contents"\s*/>`) // pandoc's own --toc uses the same marker
+	if title < 0 || pageBreak < 0 || toc < 0 {
+		t.Fatalf("title=%d page break=%d toc=%d", title, pageBreak, toc)
+	}
+	if !(title < pageBreak && pageBreak < toc) {
+		t.Fatalf("DOCX body order: title at %d, page break at %d, TOC at %d; want cover, break, TOC", title, pageBreak, toc)
+	}
+	if n := strings.Count(body, "Table of Contents"); n != 1 {
+		t.Fatalf("%d tables of contents, want 1", n)
+	}
+	// Every table's grid: at least one multi-column table must have unequal widths,
+	// and no table with more than one column may use an equal default grid.
+	gridRE := regexp.MustCompile(`<w:tblGrid>(.*?)</w:tblGrid>`)
+	colRE := regexp.MustCompile(`<w:gridCol w:w="([0-9]+)"`)
+	grids := gridRE.FindAllStringSubmatch(body, -1)
+	if len(grids) == 0 {
+		t.Fatal("no tables in the proposal DOCX")
+	}
+	unequal := 0
+	for _, g := range grids {
+		cols := colRE.FindAllStringSubmatch(g[1], -1)
+		if len(cols) < 2 {
+			continue
+		}
+		equal := true
+		for _, c := range cols[1:] {
+			equal = equal && c[1] == cols[0][1]
+		}
+		if equal {
+			t.Errorf("table grid with equal column widths: %s", g[1])
+		} else {
+			unequal++
+		}
+	}
+	if unequal == 0 {
+		t.Fatal("no table with content-proportional column widths")
 	}
 }

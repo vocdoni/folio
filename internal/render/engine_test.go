@@ -101,7 +101,7 @@ func TestEngineMarkdownToPDFAndDOCX(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref, _ := bundled.ReferenceDOCX()
-	docx, err := e.WriteDOCX(ctx, job, doc, DOCXOptions{ReferenceDOCX: ref, TOC: true, TOCTitle: "Contents", Epoch: 1792281600})
+	docx, err := e.WriteDOCX(ctx, job, doc, DOCXOptions{ReferenceDOCX: ref, Epoch: 1792281600})
 	if err != nil {
 		t.Fatalf("docx: %v", err)
 	}

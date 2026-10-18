@@ -5,7 +5,6 @@ package render
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -158,8 +157,6 @@ func pandocWarnings(stderr []byte) ([]string, error) {
 // DOCXOptions maps layout options to pandoc flags.
 type DOCXOptions struct {
 	ReferenceDOCX  []byte
-	TOC            bool
-	TOCTitle       string
 	NumberSections bool
 	Epoch          int64 // SOURCE_DATE_EPOCH
 }
@@ -168,12 +165,6 @@ type DOCXOptions struct {
 // "assets/<id>.<ext>" and written into the job) to DOCX. Folio's own Lua
 // filter is the only filter ever passed.
 func (e *Engine) WriteDOCX(ctx context.Context, job *Job, doc *pandocast.Document, opt DOCXOptions) ([]byte, error) {
-	if opt.TOC && opt.TOCTitle != "" {
-		if doc.Meta == nil {
-			doc.Meta = map[string]json.RawMessage{}
-		}
-		doc.Meta["toc-title"] = pandocast.MetaString(opt.TOCTitle)
-	}
 	raw, err := pandocast.Encode(doc)
 	if err != nil {
 		return nil, err
@@ -186,9 +177,6 @@ func (e *Engine) WriteDOCX(ctx context.Context, job *Job, doc *pandocast.Documen
 	}
 	args := []string{"--sandbox", "-f", "json", "-t", "docx",
 		"--reference-doc=reference.docx", "--lua-filter=" + e.cfg.Runtime.LuaFilter}
-	if opt.TOC {
-		args = append(args, "--toc", "--toc-depth=3")
-	}
 	if opt.NumberSections {
 		args = append(args, "--number-sections")
 	}

@@ -293,15 +293,13 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 			return nil, err
 		}
 		rewriteImages(docxDoc, assets, true)
-		if opts.Cover {
-			docxDoc.Blocks = append(docxCover(meta, labels), docxDoc.Blocks...)
-		}
+		autofitDOCXTables(docxDoc)
+		docxDoc.Blocks = append(docxFront(meta, labels, opts), docxDoc.Blocks...)
 		ref, err := p.referenceDOCX(req.Brand, logo, opts.PageSize, labels["page"])
 		if err != nil {
 			return nil, err
 		}
-		res.DOCX, err = p.cfg.Engine.WriteDOCX(ctx, job, docxDoc, DOCXOptions{
-			ReferenceDOCX: ref, TOC: opts.TOC, TOCTitle: labels["toc.title"], NumberSections: opts.HeadingNumbering, Epoch: epoch})
+		res.DOCX, err = p.cfg.Engine.WriteDOCX(ctx, job, docxDoc, DOCXOptions{ReferenceDOCX: ref, NumberSections: opts.HeadingNumbering, Epoch: epoch})
 		if err != nil {
 			return nil, err
 		}
@@ -392,6 +390,76 @@ func cloneDoc(doc *pandocast.Document) (*pandocast.Document, error) {
 	return pandocast.Decode(raw)
 }
 
+// docxFront builds the DOCX front matter: the cover (when enabled) and, after
+// its page break, the table of contents (when enabled). Pandoc's own --toc is
+// not used because it always lands before the first block, i.e. before the
+// cover. The TOC field is the second and last Folio-generated raw block; the
+// heading text goes through Str nodes, never into raw XML.
+func docxFront(meta map[string]any, labels map[string]string, opts model.LayoutOptions) []pandocast.Block {
+	var out []pandocast.Block
+	if opts.Cover {
+		out = append(out, docxCover(meta, labels)...)
+	}
+	if opts.TOC {
+		out = append(out,
+			// custom-style takes the style name; the reference document names
+			// styleId TOCHeading "TOC Heading" (the ID would add a duplicate style).
+			&pandocast.Div{Attr: pandocast.Attr{ID: "", Classes: []string{}, KeyVals: [][2]string{{"custom-style", "TOC Heading"}}},
+				Blocks: []pandocast.Block{&pandocast.Para{Inlines: pandocast.Text(labels["toc.title"])}}},
+			&pandocast.RawBlock{Format: "openxml", Text: `<w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent><w:p><w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/><w:instrText xml:space="preserve">TOC \o "1-3" \h \z \u</w:instrText><w:fldChar w:fldCharType="separate"/><w:fldChar w:fldCharType="end"/></w:r></w:p></w:sdtContent></w:sdt>`})
+	}
+	return out
+}
+
+// autofitDOCXTables gives tables without explicit widths relative widths
+// proportional to their longest cell text (clamped), so DOCX consumers that
+// do not autofit (LibreOffice, Google Docs) do not break words mid-column.
+func autofitDOCXTables(doc *pandocast.Document) {
+	pandocast.Walk(doc.Blocks, pandocast.Visitor{Block: func(b pandocast.Block, _ int) bool {
+		t, ok := b.(*pandocast.Table)
+		if !ok || len(t.ColSpecs) == 0 {
+			return true
+		}
+		for _, cs := range t.ColSpecs {
+			if cs.Width != "" {
+				return true // the author sized it
+			}
+		}
+		longest := make([]int, len(t.ColSpecs))
+		rows := append(append([]pandocast.Row{}, t.Head.Rows...), t.Foot.Rows...)
+		for _, body := range t.Bodies {
+			rows = append(rows, body.Body...)
+		}
+		for _, r := range rows {
+			col := 0
+			for _, c := range r.Cells {
+				if c.ColSpan == 1 && col < len(longest) {
+					n := 0
+					for _, blk := range c.Blocks {
+						switch x := blk.(type) {
+						case *pandocast.Plain:
+							n += len([]rune(pandocast.Stringify(x.Inlines)))
+						case *pandocast.Para:
+							n += len([]rune(pandocast.Stringify(x.Inlines)))
+						}
+					}
+					longest[col] = max(longest[col], n)
+				}
+				col += max(c.ColSpan, 1)
+			}
+		}
+		total := 0
+		for i := range longest {
+			longest[i] = min(max(longest[i], 6), 40)
+			total += longest[i]
+		}
+		for i := range t.ColSpecs {
+			t.ColSpecs[i].Width = json.Number(strconv.FormatFloat(float64(longest[i])/float64(total), 'f', 4, 64))
+		}
+		return true
+	}})
+}
+
 // docxCover builds the DOCX cover: title, version label, client, project,
 // reference, author, date (the PDF layout's order), then a page break.
 func docxCover(meta map[string]any, labels map[string]string) []pandocast.Block {
@@ -416,7 +484,8 @@ func docxCover(meta map[string]any, labels map[string]string) []pandocast.Block 
 		out = append(out, styled("Author", v))
 	}
 	out = append(out, styled("Date", s("date")))
-	// Folio-generated raw OpenXML page break (user raw content is rejected by validation).
+	// Folio-generated raw OpenXML page break, one of the two constant raw blocks
+	// Folio emits (see docxFront); user raw content is rejected by validation.
 	out = append(out, &pandocast.RawBlock{Format: "openxml", Text: `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`})
 	return out
 }
