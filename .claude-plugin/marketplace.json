@@ -1,0 +1,18 @@
+{
+  "name": "folio",
+  "owner": {
+    "name": "Folio contributors",
+    "url": "https://github.com/vocdoni/folio"
+  },
+  "metadata": {
+    "description": "The Folio plugin: MCP connection to a Folio document server and the Folio skill."
+  },
+  "plugins": [
+    {
+      "name": "folio",
+      "source": "./",
+      "description": "Branded PDF and editable DOCX documents from Markdown and data, rendered by your Folio server over MCP, plus the Folio skill.",
+      "category": "productivity"
+    }
+  ]
+}

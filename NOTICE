@@ -1,0 +1,75 @@
+Folio
+Copyright (C) the Folio contributors
+
+Folio is licensed under the GNU Affero General Public License, version 3
+only (see LICENSE).
+
+The Folio container image and the folio binary include or run the following
+third-party software. Their licences apply to those components only.
+
+Separate programs shipped in the container image
+-------------------------------------------------
+
+pandoc 3.12.1 (https://pandoc.org)
+  Copyright (C) John MacFarlane and contributors.
+  Licensed under the GNU General Public License, version 2 or later.
+  Shipped unmodified as the official static release binary and run as a
+  separate program (folio executes it as an external process). Source:
+  https://github.com/jgm/pandoc/releases/tag/3.12.1
+
+typst 0.15.1 (https://typst.app)
+  Copyright (C) Typst GmbH and contributors.
+  Licensed under the Apache License, Version 2.0.
+  Shipped unmodified as the official static release binary. Source:
+  https://github.com/typst/typst/releases/tag/v0.15.1
+
+Debian (debian:trixie-slim base image) packages, each under its own licence
+as listed in /usr/share/doc/*/copyright inside the image.
+
+Fonts embedded in the folio binary (assets/fonts)
+-------------------------------------------------
+
+All fonts are licensed under the SIL Open Font License, Version 1.1. The
+licence texts are in assets/fonts/LICENSE-*.
+
+  Inter 4.1                 Copyright (c) 2016 The Inter Project Authors
+  Source Serif 4 (4.005)    Copyright 2014 - 2023 Adobe, with Reserved Font Name "Source"
+  JetBrains Mono 2.304      Copyright 2020 The JetBrains Mono Project Authors
+  Noto Sans 2.015           Copyright 2022 The Noto Project Authors
+  Noto Sans Math 3.000      Copyright 2022 The Noto Project Authors
+
+Vendored Typst packages (assets/typst/packages)
+-----------------------------------------------
+
+None at present. Packages added later are listed here with their licences.
+
+pandoc reference document (assets/docx/reference.docx)
+------------------------------------------------------
+
+The default reference.docx of pandoc 3.12.1 (GPL-2.0-or-later), used as the
+base of generated brand reference documents.
+
+Go modules compiled into the folio binary
+-----------------------------------------
+
+  Apache-2.0:   github.com/cockroachdb/apd/v3, github.com/pdfcpu/pdfcpu,
+                github.com/santhosh-tekuri/jsonschema/v6,
+                github.com/xdg-go/stringprep
+  Apache-2.0 / MIT (licensing transition, see the module's LICENSE):
+                github.com/modelcontextprotocol/go-sdk
+  MIT:          github.com/google/jsonschema-go,
+                github.com/landlock-lsm/go-landlock,
+                github.com/clipperhouse/uax29/v2, github.com/dustin/go-humanize,
+                github.com/mattn/go-runewidth, github.com/segmentio/asm,
+                github.com/segmentio/encoding
+  MIT and Apache-2.0: go.yaml.in/yaml/v3
+  BSD-3-Clause: github.com/google/uuid, github.com/hhrutter/tiff,
+                github.com/remyoudompheng/bigfft, github.com/yosida95/uritemplate/v3,
+                golang.org/x/crypto, golang.org/x/image, golang.org/x/oauth2,
+                golang.org/x/sync, golang.org/x/sys, golang.org/x/text,
+                golang.org/x/time, modernc.org/libc, modernc.org/mathutil,
+                modernc.org/memory, modernc.org/sqlite
+  BSD-3-Clause OR GPL-2.0-only: kernel.org/pub/linux/libs/security/libcap/psx
+
+The full licence texts are in each module's source, available through the Go
+module proxy (https://proxy.golang.org) at the versions listed in go.sum.

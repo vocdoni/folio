@@ -141,6 +141,26 @@ func selfTest(ctx context.Context, e *render.Engine) error {
 	return nil
 }
 
+// newReviewer returns the AI reviewer: the injected one (tests), else the
+// OpenRouter client when FOLIO_OPENROUTER_API_KEY is set, else nil (the
+// reviewer is disabled and review_document returns unavailable).
+func newReviewer(cfg *config.Config, injected review.Reviewer, log *slog.Logger) (review.Reviewer, error) {
+	if injected != nil {
+		return injected, nil
+	}
+	if cfg.OpenRouterAPIKey == "" {
+		log.Info("ai reviewer disabled (set FOLIO_OPENROUTER_API_KEY to enable it)")
+		return nil, nil
+	}
+	or, err := review.NewOpenRouter(review.OpenRouterConfig{APIKey: cfg.OpenRouterAPIKey, Model: cfg.ReviewModel, MaxPages: cfg.ReviewMaxPages})
+	if err != nil {
+		return nil, fmt.Errorf("app: %w", err)
+	}
+	log.Info("ai reviewer enabled: page images are sent to OpenRouter when review_document runs and when templates are created or updated",
+		"model", or.Model(), "max_pages", cfg.ReviewMaxPages)
+	return or, nil
+}
+
 // New wires the service. It runs the startup maintenance and seeding before
 // returning, so the handler is ready to serve.
 func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error) {
@@ -183,7 +203,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		return nil, err
 	}
 	level := sandbox.HostLevel()
-	log.Info("sandbox", "level", string(level), "landlock_abi", sandbox.ProbeABI())
+	log.Info("sandbox", "sandbox_level", string(level), "landlock_abi", sandbox.ProbeABI())
 	logMemoryBudget(log, cfg, o.ReadFile)
 	limits := sandbox.DefaultLimits()
 	limits.Timeout, limits.MemoryBytes = cfg.RenderTimeout, cfg.RenderMemory
@@ -193,6 +213,10 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	}
 	if err := selfTest(ctx, engine); err != nil {
 		return nil, fmt.Errorf("app: tool self-test: %w", err)
+	}
+	rv, err := newReviewer(cfg, o.Reviewer, log)
+	if err != nil {
+		return nil, err
 	}
 	queue := render.NewQueue(cfg.RenderConcurrency, cfg.RenderQueue)
 	as := &assets.Service{DB: db, Blobs: blobs, Fetcher: assets.NewFetcher(cfg.MaxAssetBytes), Raster: engine, MaxBytes: cfg.MaxAssetBytes, Now: o.Now}
@@ -223,12 +247,12 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		return nil, err
 	}
 	srv := mcpserver.New(&mcpserver.Deps{Catalog: cat, Documents: docs, Assets: as, Validator: pipeline, Raster: engine, Queue: queue,
-		Blobs: blobs, DB: db, Reviewer: o.Reviewer, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
+		Blobs: blobs, DB: db, Reviewer: rv, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
 		Logger: log, Now: o.Now, ProgressInterval: o.ProgressInterval})
 	h, err := httpserver.NewHandler(httpserver.Options{
 		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth,
 		Files: docs, MaxRequestBytes: cfg.MaxRequestBytes, Logger: log, Ping: db.R.PingContext,
-		Health: httpserver.Health{Version: o.Version, Sandbox: string(level), SchemaVersion: store.SchemaVersion(), Reviewer: o.Reviewer != nil},
+		Health: httpserver.Health{Version: o.Version, Sandbox: string(level), SchemaVersion: store.SchemaVersion(), Reviewer: rv != nil},
 	})
 	if err != nil {
 		return nil, err

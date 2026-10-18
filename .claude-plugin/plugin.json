@@ -1,0 +1,37 @@
+{
+  "name": "folio",
+  "version": "0.1.0",
+  "description": "Branded PDF and editable DOCX documents (proposals, quotes, statements of work, reports) from Markdown and data, rendered by your Folio server over MCP, plus the Folio skill.",
+  "author": {
+    "name": "Folio contributors",
+    "url": "https://github.com/vocdoni/folio"
+  },
+  "homepage": "https://github.com/vocdoni/folio",
+  "repository": "https://github.com/vocdoni/folio",
+  "license": "AGPL-3.0-only",
+  "keywords": ["documents", "pdf", "docx", "proposals", "quotes", "mcp"],
+  "userConfig": {
+    "folio_url": {
+      "type": "string",
+      "title": "Folio URL",
+      "description": "Base URL of your Folio server, without a trailing slash (for example https://folio.example.com).",
+      "required": true
+    },
+    "folio_token": {
+      "type": "string",
+      "title": "Folio access token",
+      "description": "One of the server's FOLIO_TOKEN / FOLIO_TOKENS values. Stored as a secret.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "folio": {
+      "type": "http",
+      "url": "${user_config.folio_url}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.folio_token}"
+      }
+    }
+  }
+}
