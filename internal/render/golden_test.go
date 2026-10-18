@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"flag"
 	"io"
 	"math"
@@ -278,7 +279,7 @@ func checkShortColumnsFit(t *testing.T, body string) {
 	tables := 0
 	for {
 		tok, err := dec.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
