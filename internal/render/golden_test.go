@@ -204,7 +204,7 @@ func TestStarterProposalDOCXFrontMatterAndTableWidths(t *testing.T) {
 	if title < 0 || pageBreak < 0 || toc < 0 {
 		t.Fatalf("title=%d page break=%d toc=%d", title, pageBreak, toc)
 	}
-	if !(title < pageBreak && pageBreak < toc) {
+	if title > pageBreak || pageBreak > toc {
 		t.Fatalf("DOCX body order: title at %d, page break at %d, TOC at %d; want cover, break, TOC", title, pageBreak, toc)
 	}
 	if n := strings.Count(body, "Table of Contents"); n != 1 {
