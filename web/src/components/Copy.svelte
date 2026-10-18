@@ -2,7 +2,8 @@
 <!-- A snippet with a copy button (connection commands, MCP URL). -->
 <script lang="ts">
   import Icon from './Icon.svelte';
-  let { text, label }: { text: string; label: string } = $props();
+  // display: what is shown when it differs from what is copied (a masked token).
+  let { text, label, display }: { text: string; label: string; display?: string } = $props();
   let copied = $state(false);
   async function copy() {
     await navigator.clipboard.writeText(text);
@@ -12,8 +13,8 @@
 </script>
 
 <div class="snippet">
-  <pre aria-label={label}><code>{text}</code></pre>
-  <button class="btn small" onclick={copy}><Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}</button>
+  <pre aria-label={label}><code>{display ?? text}</code></pre>
+  <button class="btn small" aria-label={`${copied ? 'Copied' : 'Copy'} ${label}`} onclick={copy}><Icon name={copied ? 'check' : 'copy'} />{copied ? 'Copied' : 'Copy'}</button>
 </div>
 
 <style>

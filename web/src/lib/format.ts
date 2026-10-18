@@ -80,6 +80,7 @@ const actionNames: Record<string, string> = {
   delete_asset: 'Deleted an image',
   'ui.login': 'Signed in',
   'ui.logout': 'Signed out',
+  'ui.connection.reveal': 'Viewed the connection details',
   'ui.render': 'Rendered a document',
   'ui.document.publish': 'Published a document',
   'ui.document.delete': 'Deleted a document',

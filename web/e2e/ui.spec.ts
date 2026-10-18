@@ -204,7 +204,7 @@ test('create a brand from a logo with the assistant @mobile', async ({ page }) =
   await expect(page.getByRole('link', { name: /Northwind Traders/ }).first()).toBeVisible();
   await axe(page, 'brands');
   await page.goto('/ui/settings');
-  await expect(page.getByLabel('MCP address')).toContainText('/mcp');
+  await expect(page.getByLabel('Claude Code install command', { exact: true })).toContainText('folio --marketplace');
   await axe(page, 'settings');
   expect(w.problems).toEqual([]);
 });
@@ -301,5 +301,54 @@ test('the documents status filter shows its whole label on a phone @mobile', asy
     return { widest, room };
   });
   expect(fits.widest).toBeLessThanOrEqual(fits.room);
+  expect(w.problems).toEqual([]);
+});
+
+test('Settings reveals and copies the token and shows user-wide installs @mobile', async ({ page, request }) => {
+  const w = await watch(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await signIn(page);
+  await page.goto('/ui/settings');
+  await expect(page.getByRole('heading', { name: 'Connect your agents', level: 2 })).toBeVisible();
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+
+  // Claude Code is the plugin only, user scope, and says what it installs.
+  const plugin = page.getByLabel('Claude Code install command', { exact: true });
+  await expect(plugin).toContainText('claude plugin install folio --marketplace vocdoni/folio --scope user');
+  await expect(plugin).toContainText('--config folio_url=');
+  await expect(page.getByText('sets up the MCP connection and the Folio skill together')).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('claude mcp add');
+
+  // Hidden by default: the token is nowhere on the page, but Copy still copies it.
+  const cursor = page.getByLabel('Cursor configuration', { exact: true });
+  await expect(page.locator('body')).not.toContainText(token);
+  await page.getByRole('button', { name: 'Copy token' }).click();
+  expect(await clipboard()).toBe(token);
+
+  // Show fills in the snippets; Hide masks them again.
+  await page.getByRole('button', { name: 'Show token' }).click();
+  await expect(page.getByRole('button', { name: 'Show token' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(cursor).toContainText(token);
+  await expect(plugin).toContainText(`--config folio_token='${token}'`);
+  await page.getByRole('button', { name: 'Copy Claude Code install command' }).click();
+  expect(await clipboard()).toContain(`--config folio_token='${token}'`);
+  await page.getByRole('button', { name: 'Copy Cursor configuration' }).click();
+  expect(await clipboard()).toContain(`"Authorization": "Bearer ${token}"`);
+  await page.getByRole('button', { name: 'Copy Codex configuration' }).click();
+  expect(await clipboard()).toContain(`Bearer ${token}`);
+  await page.getByRole('button', { name: 'Show token' }).click();
+  await expect(page.getByRole('button', { name: 'Show token' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(cursor).not.toContainText(token);
+
+  await expect(page.getByText('Anyone with this token can use Folio as you. Keep it out of shared repositories, and note that pasted commands stay in your shell history.')).toBeVisible();
+  await expect(page.getByLabel('Codex skill install command', { exact: true })).toContainText('/skills/folio/SKILL.md -o ~/.codex/skills/folio/SKILL.md');
+  await expect(page.getByRole('heading', { name: 'Things to ask your agent', level: 2 })).toBeVisible();
+  await axe(page, 'settings connect');
+
+  // The skill is public and is the single file.
+  const anon = await request.get('/skills/folio/SKILL.md', { headers: { Cookie: '' } });
+  expect(anon.status()).toBe(200);
+  expect(anon.headers()['content-type']).toBe('text/markdown; charset=utf-8');
+  expect(await anon.text()).toContain('name: folio');
   expect(w.problems).toEqual([]);
 });

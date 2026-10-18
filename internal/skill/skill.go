@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package skill generates the Agent Skill in skills/folio from the MCP guides,
-// so get_guide and the skill share one source of truth. SKILL.md comes from
-// skill.md.tmpl plus a generated reference list; references/<topic>.md are
-// the guides verbatim behind a generated-file banner.
+// so get_guide and the skill share one source of truth. The skill is a single
+// self-contained SKILL.md: skill.md.tmpl plus a generated "Deeper guides"
+// list that tells the agent to call get_guide for each topic.
 package skill
 
 import (
@@ -23,10 +23,9 @@ var skillTemplate string
 const Dir = "skills/folio"
 
 // Files returns every file of the skill directory keyed by its slash-separated
-// path relative to Dir. The output is deterministic.
+// path relative to Dir (only SKILL.md). The output is deterministic.
 func Files() (map[string][]byte, error) {
-	files := map[string][]byte{}
-	var refs strings.Builder
+	var guides strings.Builder
 	for _, topic := range mcpserver.Topics {
 		md, ok := mcpserver.Guide(topic)
 		if !ok {
@@ -36,18 +35,12 @@ func Files() (map[string][]byte, error) {
 		if title == "" || summary == "" {
 			return nil, fmt.Errorf("skill: guide %q needs a '# Title' line and a summary line", topic)
 		}
-		fmt.Fprintf(&refs, "- [references/%s.md](references/%s.md): %s. %s\n", topic, topic, title, summary)
-		files["references/"+topic+".md"] = []byte(banner(topic) + md)
+		fmt.Fprintf(&guides, "- `%s`: %s. %s\n", topic, title, summary)
 	}
-	if !strings.Contains(skillTemplate, "{{REFERENCES}}") {
-		return nil, fmt.Errorf("skill: skill.md.tmpl lacks the {{REFERENCES}} placeholder")
+	if !strings.Contains(skillTemplate, "{{GUIDES}}") {
+		return nil, fmt.Errorf("skill: skill.md.tmpl lacks the {{GUIDES}} placeholder")
 	}
-	files["SKILL.md"] = []byte(strings.Replace(skillTemplate, "{{REFERENCES}}\n", refs.String(), 1))
-	return files, nil
-}
-
-func banner(topic string) string {
-	return "<!-- Generated from internal/mcpserver/guides/" + topic + ".md by `go generate ./internal/skill`. Do not edit. -->\n\n"
+	return map[string][]byte{"SKILL.md": []byte(strings.Replace(skillTemplate, "{{GUIDES}}\n", guides.String(), 1))}, nil
 }
 
 // head returns a guide's "# " title and the first non-empty line after it.

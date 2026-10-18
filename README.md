@@ -35,6 +35,7 @@ Folio is licensed under the GNU Affero General Public License v3.0 only
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Connecting agents](#connecting-agents)
+- [Example prompts](#example-prompts)
 - [Web UI](#web-ui)
 - [Worked examples](#worked-examples)
 - [Upgrading from the money-computing contract](#upgrading-from-the-money-computing-contract)
@@ -93,7 +94,7 @@ curl http://localhost:8080/healthz
 
 On first start Folio seeds the starter brand and templates. Then connect an
 agent (for Claude Code:
-`claude mcp add --transport http folio http://localhost:8080/mcp --header "Authorization: Bearer $FOLIO_TOKEN"`)
+the plugin, see [Connecting agents](#connecting-agents))
 and ask it to "render a proposal with Folio".
 
 The image runs as the unprivileged user `folio` (uid 47100). A named volume
@@ -195,27 +196,34 @@ the header `Authorization: Bearer <token>`. The examples use
 
 ### Claude Code (plugin)
 
-The plugin connects the MCP server and installs the Folio skill. It asks for
-the URL and the token (stored as a secret) when you install it:
-
-```text
-/plugin marketplace add vocdoni/folio
-/plugin install folio@folio
-```
-
-### Claude Code (MCP only)
+Claude Code connects through the Folio plugin. One install sets up both the
+MCP connection and the Folio skill, for your whole account. The address is
+your Folio address without `/mcp` (the plugin adds it); Claude Code keeps the
+token with its other credentials (the macOS keychain, or a private
+`~/.claude/.credentials.json` elsewhere).
 
 ```sh
-claude mcp add --transport http folio https://folio.example.com/mcp \
-  --header "Authorization: Bearer $FOLIO_TOKEN"
+claude plugin install folio --marketplace vocdoni/folio --scope user \
+  --config folio_url=https://folio.example.com \
+  --config folio_token='<token>'
 ```
 
-Add `--scope user` to make it available in every project. The skill can be
-copied separately: `cp -r skills/folio ~/.claude/skills/`.
+`--marketplace` adds the marketplace first if it is missing. To keep the token
+out of your shell history, pass `--config folio_token="$FOLIO_TOKEN"`. To
+change the values later, run `claude plugin configure folio@folio` (or
+`echo '{"folio_token":"..."}' | claude plugin configure folio@folio --values-stdin`).
+
+Inside a Claude Code session you can instead run `/plugin marketplace add vocdoni/folio`
+and `/plugin install folio@folio`, which prompts for the two values.
+
+With the web UI enabled, Settings shows the address and the token (hidden
+until you press Show) and fills every snippet below in for you. The snippets
+here read the token from a `FOLIO_TOKEN` environment variable; the Settings
+versions contain the token itself. Both work.
 
 ### Codex
 
-`~/.codex/config.toml`:
+User-level file `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.folio]
@@ -225,7 +233,7 @@ bearer_token_env_var = "FOLIO_TOKEN"
 
 ### Cursor
 
-`~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
+User-level file `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -240,7 +248,7 @@ bearer_token_env_var = "FOLIO_TOKEN"
 
 ### Gemini CLI
 
-`~/.gemini/settings.json`:
+User-level file `~/.gemini/settings.json`:
 
 ```json
 {
@@ -255,12 +263,48 @@ bearer_token_env_var = "FOLIO_TOKEN"
 
 or `gemini mcp add --transport http --header "Authorization: Bearer $FOLIO_TOKEN" folio https://folio.example.com/mcp`.
 
-### Other agents and the Agent Skill
+### pi coding agent
 
-Any MCP client that can send a static `Authorization` header works. Agents
-that support [Agent Skills](https://agentskills.io) can load
-[`skills/folio`](skills/folio) (`SKILL.md` plus references generated from
-the same guides the server returns from `get_guide`).
+pi (0.99 or later) has built-in MCP support and reads user-level files from
+`~/.pi/agent`:
+
+```sh
+# 1. Make the token available to pi (add to your shell profile)
+export FOLIO_TOKEN='<token>'
+# 2. Register Folio for every project (user level, written to ~/.pi/agent/mcp.json)
+pi mcp add folio --url https://folio.example.com/mcp --bearer-token-env-var FOLIO_TOKEN
+pi mcp list            # should show folio connected with its tools
+# 3. Install the Folio skill
+mkdir -p ~/.pi/agent/skills/folio && curl -fsSL https://folio.example.com/skills/folio/SKILL.md -o ~/.pi/agent/skills/folio/SKILL.md
+```
+
+In a pi session that is already open, run `/reload`; `/skill:folio` forces the
+skill. To edit the file yourself, put this in `~/.pi/agent/mcp.json`:
+
+```json
+{ "mcpServers": { "folio": { "url": "https://folio.example.com/mcp", "headers": { "Authorization": "Bearer ${FOLIO_TOKEN}" } } } }
+```
+
+### The Agent Skill without the plugin
+
+The skill is a single file, [`skills/folio/SKILL.md`](skills/folio/SKILL.md).
+The Claude Code plugin installs it for you. For other agents that support
+[Agent Skills](https://agentskills.io), every Folio server serves it without
+authentication at `/skills/folio/SKILL.md`; save it in the agent's user-level
+skills folder:
+
+```sh
+mkdir -p ~/.codex/skills/folio && curl -fsSL https://folio.example.com/skills/folio/SKILL.md -o ~/.codex/skills/folio/SKILL.md
+```
+
+Use `~/.codex/skills` for Codex, `~/.pi/agent/skills` for pi, and
+`~/.agents/skills` (the shared Agent Skills folder several agents read) or the
+agent's own skills folder otherwise. The skill points the agent to the server's
+`get_guide` tool for details, so it does not need other files.
+
+### Other MCP agents
+
+Any MCP client that can send a static `Authorization` header works.
 
 ### claude.ai and Claude Desktop (custom connectors)
 
@@ -276,6 +320,23 @@ use OAuth, which Folio does not implement.
 Clients that cannot send a static bearer header cannot connect, because Folio does
 not implement OAuth: ChatGPT connectors, and any custom-connector setup that offers
 OAuth only.
+
+## Example prompts
+
+Once Folio is connected, ask your agent in plain language. Folio never changes
+your wording or figures.
+
+- "Use Folio to turn these meeting notes into a project proposal for ACME Corp using the proposal template. Keep my wording and the figures exactly as written."
+- "Make a quote for Globex with these line items and prices, using the figures exactly as I wrote them, and give me the PDF and DOCX links."
+- "Revise the ACME proposal: change the delivery date to 15 December and publish the new revision."
+- "Show my last five Folio documents with their download links."
+- "Create a Folio template for meeting minutes with attendees, decisions and action items, then show me a preview."
+- "Create a Folio brand for Initech with primary colour #0B5D4B, accent colour #F2A900 and this logo, then render a one-page letter with it so I can check the look."
+- "Turn this Markdown file into a technical report with Folio and send me the PDF and DOCX links. Do not change any wording."
+- "Write a statement of work for the Hooli website redesign with three milestones: design by 30 November, build by 31 January and launch on 28 February. Use the amounts I give you exactly as written."
+- "Format this text as a letter with Folio without changing a single word, typos included. Tell me if the template needs a detail I did not give you."
+
+To build a brand from a website, use Brands in the web UI.
 
 ## Web UI
 
@@ -302,8 +363,11 @@ there are no user accounts.
   stay available for experts.
 - **Brands and images.** Colour pickers, specimens of the bundled fonts,
   logo upload, header and footer, with a live specimen page.
-- **Settings.** Version, sandbox level, assistant status and the commands
-  that connect an agent to this instance.
+- **Settings.** Version, sandbox level, assistant status, the access token
+  (hidden until you press Show; each view is recorded in Activity without the
+  token, so anyone with the UI password can read the token) and the commands
+  that connect an agent to this instance, filled in with it. It also lists
+  example prompts.
 
 ### Assistants
 
