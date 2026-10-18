@@ -1,0 +1,12 @@
+# secrets and local state
+*-api-key.txt
+.env
+.env.*
+!.env.example
+.remember/
+.delivery/
+
+# build output
+/bin/
+/dist/
+/data/
