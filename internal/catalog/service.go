@@ -194,7 +194,7 @@ func (s *Service) putBrand(ctx context.Context, actor string, b model.Brand, not
 	if err != nil {
 		return 0, err
 	}
-	return putVersion(ctx, s.DB, KindBrand, b.ID, create, expected, spec, note, actor, s.Now())
+	return putVersion(ctx, s.DB, KindBrand, b.ID, create, expected, spec, note, actor, s.Now(), nil)
 }
 
 // CreateTemplate validates, renders the sample (any error, or any warning
@@ -243,11 +243,12 @@ func (s *Service) putTemplate(ctx context.Context, actor string, t model.Templat
 	if err != nil {
 		return nil, err
 	}
-	v, err := putVersion(ctx, s.DB, KindTemplate, t.ID, create, expected, spec, note, actor, s.Now())
+	files, now, err := s.previewBlobs(res, t.ID) // Blobs.Put only; no DB
 	if err != nil {
 		return nil, err
 	}
-	files, err := s.storePreview(ctx, t.ID, v, res)
+	v, err := putVersion(ctx, s.DB, KindTemplate, t.ID, create, expected, spec, note, actor, now,
+		func(tx *sql.Tx, version int) error { return s.insertPreviewRows(ctx, tx, t.ID, version, files, now) })
 	if err != nil {
 		return nil, err
 	}
@@ -273,15 +274,21 @@ func (s *Service) PreviewTemplate(ctx context.Context, id string, version int) (
 	if err != nil {
 		return nil, err
 	}
-	files, err := s.storePreview(ctx, id, v, res)
+	files, now, err := s.previewBlobs(res, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error { return s.insertPreviewRows(ctx, tx, id, v, files, now) }); err != nil {
 		return nil, err
 	}
 	return &TemplateResult{ID: id, Version: v, Warnings: res.Warnings, Files: files}, nil
 }
 
-// storePreview writes blobs then file rows (template-owned, expiring).
-func (s *Service) storePreview(ctx context.Context, id string, version int, res *render.Result) ([]File, error) {
+// previewBlobs writes the preview blobs (PDF, DOCX, the first PreviewPagesMax
+// pages) and returns their file records, expiring PreviewTTL after the
+// returned time. It never touches the database: blobs are written before any
+// transaction so the single writer connection is never held during disk I/O.
+func (s *Service) previewBlobs(res *render.Result, id string) ([]File, time.Time, error) {
 	now := s.Now()
 	exp := now.Add(s.PreviewTTL)
 	type out struct {
@@ -306,24 +313,27 @@ func (s *Service) storePreview(ctx context.Context, id string, version int, res 
 	for _, o := range outs {
 		sum, err := s.Blobs.Put(o.data)
 		if err != nil {
-			return nil, err
+			return nil, now, err
 		}
 		files = append(files, File{ID: uuid.NewString(), Kind: o.kind, Page: o.page, Name: o.name, MIME: o.mime, SHA256: sum, Size: len(o.data), ExpiresAt: exp})
 	}
-	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
-		for _, f := range files {
-			var page any
-			if f.Page > 0 {
-				page = f.Page
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO files (id, template_id, template_version, kind, page, name, mime, sha256, size, created_at, expires_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, f.ID, id, version, f.Kind, page, f.Name, f.MIME, f.SHA256, f.Size, store.Now(now), store.Now(exp)); err != nil {
-				return fmt.Errorf("catalog: insert preview file: %w", err)
-			}
+	return files, now, nil
+}
+
+// insertPreviewRows inserts the template-owned, expiring file rows for
+// id@version inside tx.
+func (s *Service) insertPreviewRows(ctx context.Context, tx *sql.Tx, id string, version int, files []File, now time.Time) error {
+	for _, f := range files {
+		var page any
+		if f.Page > 0 {
+			page = f.Page
 		}
-		return nil
-	})
-	return files, err
+		if _, err := tx.ExecContext(ctx, `INSERT INTO files (id, template_id, template_version, kind, page, name, mime, sha256, size, created_at, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, f.ID, id, version, f.Kind, page, f.Name, f.MIME, f.SHA256, f.Size, store.Now(now), store.Now(f.ExpiresAt)); err != nil {
+			return fmt.Errorf("catalog: insert preview file: %w", err)
+		}
+	}
+	return nil
 }
 
 // ResolveBrand returns brand id@version (0 = latest); archived brands are rejected.

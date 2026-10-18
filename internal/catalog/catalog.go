@@ -67,9 +67,11 @@ func notFound(kind Kind, id string) error {
 // IMMEDIATE transaction. For updates expectedVersion must equal the current
 // latest version, otherwise the transaction is rolled back with conflict.
 // The single writer connection serialises concurrent updates, so of two
-// updates with the same expected_version exactly one succeeds.
+// updates with the same expected_version exactly one succeeds. extra (may be
+// nil) runs inside the same transaction after the head update, so rows that
+// belong to the new version commit or roll back with it.
 func putVersion(ctx context.Context, db *store.DB, kind Kind, id string, create bool, expectedVersion int,
-	spec []byte, note, actor string, now time.Time) (int, error) {
+	spec []byte, note, actor string, now time.Time, extra func(tx *sql.Tx, version int) error) (int, error) {
 	versions, heads := kind.tables()
 	var newVersion int
 	err := db.WriteTx(ctx, func(tx *sql.Tx) error {
@@ -103,6 +105,11 @@ func putVersion(ctx context.Context, db *store.DB, kind Kind, id string, create 
 		}
 		if err != nil {
 			return fmt.Errorf("catalog: update head: %w", err)
+		}
+		if extra != nil {
+			if err := extra(tx, newVersion); err != nil {
+				return err
+			}
 		}
 		action := "update_" + string(kind)
 		if create {

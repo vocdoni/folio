@@ -4,7 +4,10 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -145,4 +148,81 @@ func TestValidateBrandRejectsJPEGLogo(t *testing.T) {
 		}
 	}
 	t.Fatal("JPEG logo was not rejected")
+}
+
+// A template version and its preview file rows commit in one transaction: if
+// storing the preview fails, no new version exists and the same request can
+// be retried (create again, update with the same expected_version).
+func TestTemplateVersionCommitsWithPreviewFiles(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	if _, err := s.CreateBrand(ctx, "alice", brand(), "v1"); err != nil {
+		t.Fatal(err)
+	}
+	failRows := func(on bool) {
+		t.Helper()
+		stmt := `DROP TRIGGER fail_preview_rows`
+		if on {
+			stmt = `CREATE TRIGGER fail_preview_rows BEFORE INSERT ON files BEGIN SELECT RAISE(ABORT, 'preview storage failed'); END`
+		}
+		if err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error { _, err := tx.ExecContext(ctx, stmt); return err }); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Preview row insert fails inside the version transaction.
+	failRows(true)
+	if _, err := s.CreateTemplate(ctx, "alice", tmpl(), "v1"); err == nil {
+		t.Fatal("create succeeded although the preview rows could not be stored")
+	}
+	if _, err := s.GetTemplate(ctx, "proposal", 0); err == nil {
+		t.Fatal("template exists after a failed preview store")
+	}
+	failRows(false)
+	if res, err := s.CreateTemplate(ctx, "alice", tmpl(), "v1"); err != nil || res.Version != 1 || len(res.Files) == 0 {
+		t.Fatalf("retried create: %+v %v", res, err)
+	}
+	failRows(true)
+	tp := tmpl()
+	tp.Description = "edit"
+	if _, err := s.UpdateTemplate(ctx, "bob", "proposal", 1, tp, "v2"); err == nil {
+		t.Fatal("update succeeded although the preview rows could not be stored")
+	}
+	if it, err := s.GetTemplate(ctx, "proposal", 0); err != nil || it.LatestVersion != 1 || len(it.Versions) != 1 {
+		t.Fatalf("after failed update: %+v %v", it, err)
+	}
+	failRows(false)
+	if res, err := s.UpdateTemplate(ctx, "bob", "proposal", 1, tp, "v2"); err != nil || res.Version != 2 {
+		t.Fatalf("retried update with the same expected_version: %+v %v", res, err)
+	}
+}
+
+// A blob write failure for the preview happens before the version
+// transaction, so it leaves no version behind either.
+func TestTemplatePreviewBlobFailureLeavesNoVersion(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	if _, err := s.CreateBrand(ctx, "alice", brand(), "v1"); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), "blobs")
+	blobs, err := store.NewBlobs(root, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Replace the hash directory with a regular file: every new Put fails,
+	// whatever the process privileges.
+	if err := os.RemoveAll(filepath.Join(root, "sha256")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sha256"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.Blobs = blobs
+	if _, err := s.CreateTemplate(ctx, "alice", tmpl(), "v1"); err == nil {
+		t.Fatal("create succeeded although the preview blobs could not be stored")
+	}
+	if _, err := s.GetTemplate(ctx, "proposal", 0); err == nil {
+		t.Fatal("template exists after a failed preview blob write")
+	}
 }
