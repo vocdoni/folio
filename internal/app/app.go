@@ -283,7 +283,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 			log.Info("web UI assistants enabled: content you send to an assistant goes to OpenRouter", "model", cfg.AIModel)
 		}
 		ws, err := webui.New(webui.Options{Config: cfg, DB: db, Blobs: blobs, Catalog: cat, Documents: docs, Assets: as,
-			Validator: pipeline, Raster: engine, Queue: queue, Preview: &previewCat, Activity: rec, Broadcaster: bc, AI: assistant,
+			Validator: pipeline, Raster: engine, Queue: queue, Preview: &previewCat, PreviewQueue: previewQueue, Convert: engine, Activity: rec, Broadcaster: bc, AI: assistant,
 			Reviewer: rv != nil, Version: o.Version, Sandbox: string(level), Packages: packages, Logger: log, Now: o.Now})
 		if err != nil {
 			return nil, err

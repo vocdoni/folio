@@ -43,26 +43,28 @@ type Rasterizer interface {
 // Options wires the UI to Folio's services. Config, DB, Logger and Now are
 // required; the rest is required by the routes that use it.
 type Options struct {
-	Config      *config.Config
-	DB          *store.DB
-	Blobs       *store.Blobs
-	Catalog     *catalog.Service
-	Documents   *documents.Service
-	Assets      *assets.Service
-	Validator   catalog.Renderer // render.Pipeline (validate-only runs)
-	Raster      Rasterizer       // on-demand document pages
-	Queue       *render.Queue    // the MCP render queue (on-demand pages)
-	Preview     *catalog.Service // catalog bound to the UI preview pipeline (its own queue)
-	Activity    *activity.Recorder
-	Broadcaster *activity.Broadcaster
-	AI          *ai.Client // nil: the assistants are off (no FOLIO_OPENROUTER_API_KEY)
-	Reviewer    bool       // the layout reviewer is configured
-	Version     string
-	Sandbox     string
-	Packages    []string
-	Dist        fs.FS // built SPA (the embedded dist/ by default)
-	Logger      *slog.Logger
-	Now         func() time.Time
+	Config       *config.Config
+	DB           *store.DB
+	Blobs        *store.Blobs
+	Catalog      *catalog.Service
+	Documents    *documents.Service
+	Assets       *assets.Service
+	Validator    catalog.Renderer // render.Pipeline (validate-only runs)
+	Raster       Rasterizer       // on-demand document pages
+	Queue        *render.Queue    // the MCP render queue (on-demand pages)
+	Preview      *catalog.Service // catalog bound to the UI preview pipeline (its own queue)
+	PreviewQueue *render.Queue    // that queue (example conversion takes a slot too)
+	Convert      Converter        // DOCX → Markdown and PDF pages for template-draft examples
+	Activity     *activity.Recorder
+	Broadcaster  *activity.Broadcaster
+	AI           *ai.Client // nil: the assistants are off (no FOLIO_OPENROUTER_API_KEY)
+	Reviewer     bool       // the layout reviewer is configured
+	Version      string
+	Sandbox      string
+	Packages     []string
+	Dist         fs.FS // built SPA (the embedded dist/ by default)
+	Logger       *slog.Logger
+	Now          func() time.Time
 }
 
 // Server is the web UI handler.

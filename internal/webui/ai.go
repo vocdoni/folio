@@ -17,6 +17,7 @@ func (s *Server) aiRoutes(mux *http.ServeMux) {
 	s.api(mux, "GET /ui/api/ai/status", route{}, s.handleAIStatus)
 	s.api(mux, "GET /ui/api/ai/jobs/{id}", route{}, s.handleAIJob)
 	s.api(mux, "POST /ui/api/ai/document-plan", route{action: "ui.ai.document-plan"}, s.handleDocumentPlan)
+	s.api(mux, "POST /ui/api/ai/template-draft", route{action: "ui.ai.template-draft"}, s.handleTemplateDraft)
 }
 
 // AIStatusOut is GET /ui/api/ai/status.
