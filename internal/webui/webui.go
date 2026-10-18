@@ -72,6 +72,7 @@ type Server struct {
 	handler  http.Handler
 
 	ipLogOnce sync.Once
+	heartbeat time.Duration // SSE keep-alive; 0 = 20 s (tests shorten it)
 }
 
 // New builds the UI handler. It fails when the UI is not enabled or a
@@ -130,5 +131,6 @@ func (s *Server) routes() http.Handler {
 	s.api(mux, "GET /ui/api/session", route{public: true}, s.handleSession)
 	s.api(mux, "POST /ui/api/login", route{public: true, action: "ui.login"}, s.handleLogin)
 	s.api(mux, "POST /ui/api/logout", route{action: "ui.logout"}, s.handleLogout)
+	s.overviewRoutes(mux)
 	return mux
 }
