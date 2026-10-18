@@ -316,7 +316,15 @@ export interface BrandSuggestion {
   brand: BrandSpec;
   findings: Finding[];
   swatches?: { hex: string; share: number }[];
-  evidence?: { url: string; title?: string; theme_color?: string; colors: { hex: string; count: number }[]; images: string[] };
+  evidence?: {
+    url: string;
+    title?: string;
+    theme_color?: string;
+    colors: { hex: string; count: number }[];
+    semantic?: Record<string, string>;
+    fonts?: { family: string; source: string; closest?: string }[];
+    images: string[];
+  };
   logo_index: number;
 }
 

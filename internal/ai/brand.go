@@ -7,14 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"net/url"
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
-
-	"golang.org/x/net/html"
 
 	"github.com/vocdoni/folio/internal/model"
 )
@@ -114,168 +110,6 @@ func clamp(v float64) uint8 {
 	return uint8(v + 0.5)
 }
 
-// ColorCount is a colour seen on a web page and how often.
-type ColorCount struct {
-	Hex   string `json:"hex"`
-	Count int    `json:"count"`
-}
-
-// Evidence is what Folio extracted from a web page; the model sees only
-// this, never the raw HTML. Images are absolute https URLs of logo and icon
-// candidates (the user may pick one; Folio downloads it only then).
-type Evidence struct {
-	URL        string            `json:"url"`
-	Title      string            `json:"title,omitempty"`
-	SiteName   string            `json:"site_name,omitempty"`
-	ThemeColor string            `json:"theme_color,omitempty"`
-	Colors     []ColorCount      `json:"colors"`               // top 12 by frequency
-	Properties map[string]string `json:"properties,omitempty"` // CSS custom properties holding colours
-	Images     []string          `json:"images"`               // ≤ 8 candidates
-	counts     map[string]int
-}
-
-var (
-	hexRE  = regexp.MustCompile(`#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
-	rgbRE  = regexp.MustCompile(`rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})`)
-	propRE = regexp.MustCompile(`(--[A-Za-z0-9_-]{1,64})\s*:\s*([^;}{]{1,64})`)
-)
-
-// normHex returns #RRGGBB for a CSS hex or rgb() colour, "" otherwise.
-func normHex(s string) string {
-	s = strings.TrimSpace(s)
-	if m := hexRE.FindStringSubmatch(s); m != nil && strings.HasPrefix(s, "#") {
-		h := strings.ToUpper(m[1])
-		if len(h) == 3 {
-			h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
-		}
-		return "#" + h
-	}
-	if m := rgbRE.FindStringSubmatch(s); m != nil {
-		var c [3]int
-		for i := range c {
-			c[i], _ = strconv.Atoi(m[i+1])
-			if c[i] > 255 {
-				return ""
-			}
-		}
-		return fmt.Sprintf("#%02X%02X%02X", c[0], c[1], c[2])
-	}
-	return ""
-}
-
-// AddCSS counts the colours and colour custom properties of a stylesheet.
-func (e *Evidence) AddCSS(css string) {
-	if e.counts == nil {
-		e.counts = map[string]int{}
-	}
-	for _, m := range hexRE.FindAllString(css, 5000) {
-		e.counts[normHex(m)]++
-	}
-	for _, m := range rgbRE.FindAllString(css, 5000) {
-		if h := normHex(m); h != "" {
-			e.counts[h]++
-		}
-	}
-	for _, m := range propRE.FindAllStringSubmatch(css, 500) {
-		if h := normHex(m[2]); h != "" && len(e.Properties) < 40 {
-			if e.Properties == nil {
-				e.Properties = map[string]string{}
-			}
-			e.Properties[m[1]] = h
-		}
-	}
-	e.Colors = e.Colors[:0]
-	for h, n := range e.counts {
-		e.Colors = append(e.Colors, ColorCount{Hex: h, Count: n})
-	}
-	sort.Slice(e.Colors, func(i, j int) bool {
-		if e.Colors[i].Count != e.Colors[j].Count {
-			return e.Colors[i].Count > e.Colors[j].Count
-		}
-		return e.Colors[i].Hex < e.Colors[j].Hex
-	})
-	if len(e.Colors) > 12 {
-		e.Colors = e.Colors[:12]
-	}
-}
-
-// MaxStylesheets bounds the same-origin stylesheets Folio fetches.
-const MaxStylesheets = 3
-
-// ExtractEvidence parses a page: title, theme colour, site name, inline
-// styles, icon and og:image candidates; it returns at most MaxStylesheets
-// same-origin stylesheet URLs to fetch.
-func ExtractEvidence(page []byte, base *url.URL) (*Evidence, []string) {
-	e := &Evidence{URL: base.String(), Colors: []ColorCount{}, Images: []string{}}
-	doc, err := html.Parse(strings.NewReader(string(page)))
-	if err != nil {
-		return e, nil
-	}
-	var sheets []string
-	addImage := func(ref string) {
-		u, err := base.Parse(strings.TrimSpace(ref))
-		if err != nil || u.Scheme != "https" || u.User != nil || len(u.String()) > 2048 || len(e.Images) >= 8 || slices.Contains(e.Images, u.String()) {
-			return
-		}
-		e.Images = append(e.Images, u.String())
-	}
-	attr := func(n *html.Node, k string) string {
-		for _, a := range n.Attr {
-			if strings.EqualFold(a.Key, k) {
-				return a.Val
-			}
-		}
-		return ""
-	}
-	var css strings.Builder
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "title":
-				if n.FirstChild != nil && e.Title == "" {
-					e.Title = Short(strings.TrimSpace(n.FirstChild.Data))
-				}
-			case "meta":
-				name, prop, content := strings.ToLower(attr(n, "name")), strings.ToLower(attr(n, "property")), attr(n, "content")
-				switch {
-				case name == "theme-color":
-					e.ThemeColor = normHex(content)
-				case prop == "og:site_name":
-					e.SiteName = Short(content)
-				case prop == "og:image":
-					addImage(content)
-				}
-			case "link":
-				rels := strings.Fields(strings.ToLower(attr(n, "rel")))
-				href := attr(n, "href")
-				switch {
-				case slices.Contains(rels, "icon") || slices.Contains(rels, "apple-touch-icon"):
-					addImage(href)
-				case slices.Contains(rels, "stylesheet") && len(sheets) < MaxStylesheets:
-					if u, err := base.Parse(href); err == nil && u.Scheme == base.Scheme && u.Host == base.Host {
-						sheets = append(sheets, u.String())
-					}
-				}
-			case "img":
-				if strings.Contains(strings.ToLower(attr(n, "src")+" "+attr(n, "alt")+" "+attr(n, "class")), "logo") {
-					addImage(attr(n, "src"))
-				}
-			case "style":
-				if n.FirstChild != nil && css.Len() < 512<<10 {
-					css.WriteString(n.FirstChild.Data)
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(doc)
-	e.AddCSS(css.String())
-	return e, sheets
-}
-
 // BrandInput is a brand-suggestion request: a logo's colours (and image
 // for vision models) or a web page's evidence.
 type BrandInput struct {
@@ -369,7 +203,7 @@ func (c *Client) SuggestBrand(ctx context.Context, in BrandInput, step func(stri
 		ev["logo_colors"] = in.Swatches
 	}
 	if in.Evidence != nil {
-		ev["website"] = in.Evidence
+		ev["website"] = in.Evidence.ForModel()
 		images = len(in.Evidence.Images)
 	}
 	evJSON, _ := json.Marshal(ev)

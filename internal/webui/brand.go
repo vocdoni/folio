@@ -5,6 +5,7 @@ package webui
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"image"
 	_ "image/jpeg" // logo decoding
 	"image/png"
@@ -141,18 +142,31 @@ func (s *Server) handleBrandSuggest(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// pageEvidence fetches an https page and up to three same-origin
-// stylesheets through the SSRF-guarded fetcher and extracts the evidence.
+// pageEvidence fetches an https page (following one meta refresh), up to
+// three same-origin stylesheets and the web app manifest, all through the
+// SSRF-guarded fetcher, and extracts the evidence.
 func (s *Server) pageEvidence(ctx context.Context, rawURL string) (*ai.Evidence, error) {
-	page, final, _, err := assets.NewFetcher(pageMaxBytes, s.o.FetchOptions...).Get(ctx, rawURL, htmlAccept)
+	pf := assets.NewFetcher(pageMaxBytes, s.o.FetchOptions...)
+	page, final, _, err := pf.Get(ctx, rawURL, htmlAccept)
 	if err != nil {
 		return nil, invalidf("the page could not be read: %v", err)
+	}
+	if next := ai.MetaRefresh(page, final); next != "" {
+		if p2, f2, _, err := pf.Get(ctx, next, htmlAccept); err == nil {
+			page, final = p2, f2
+		}
 	}
 	ev, sheets := ai.ExtractEvidence(page, final)
 	sf := assets.NewFetcher(sheetMaxBytes, s.o.FetchOptions...)
 	for _, u := range sheets {
 		if css, _, _, err := sf.Get(ctx, u, http.Header{"Accept": {"text/css,*/*;q=0.1"}}); err == nil {
 			ev.AddCSS(string(css))
+		}
+	}
+	if m := ev.ManifestURL(); m != "" {
+		mf := assets.NewFetcher(ai.MaxManifest, s.o.FetchOptions...)
+		if data, at, _, err := mf.Get(ctx, m, http.Header{"Accept": {"application/manifest+json,application/json;q=0.9,*/*;q=0.1"}}); err == nil {
+			ev.AddManifest(data, at)
 		}
 	}
 	return ev, nil
@@ -182,7 +196,12 @@ func (s *Server) handleBrandLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Only a URL Folio extracted itself is fetched, never one the model wrote.
-	a, err := s.o.Assets.Upload(r.Context(), Actor, assets.UploadRequest{Name: "logo" + pathExt(out.Evidence.Images[in.Index]), URL: out.Evidence.Images[in.Index]})
+	req := assets.UploadRequest{Name: "logo" + pathExt(out.Evidence.Images[in.Index]), URL: out.Evidence.Images[in.Index]}
+	if svg, inline := ai.InlineSVG(out.Evidence.Images[in.Index]); inline {
+		// An SVG written in the page itself: stored through the same sanitiser as an upload.
+		req = assets.UploadRequest{Name: "logo.svg", ContentBase64: base64.StdEncoding.EncodeToString(svg)}
+	}
+	a, err := s.o.Assets.Upload(r.Context(), Actor, req)
 	if err != nil {
 		writeError(w, r, err)
 		return

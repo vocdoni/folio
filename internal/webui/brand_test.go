@@ -83,7 +83,7 @@ func TestBrandFromURL(t *testing.T) {
 	var out BrandSuggestOut
 	_ = json.Unmarshal(raw, &out)
 	if j.State != jobDone || out.Evidence == nil || len(out.Evidence.Images) != 1 || out.LogoIndex != 0 ||
-		out.Evidence.Properties["--brand"] != "#C8246B" || out.Brand.Logo != nil {
+		out.Evidence.Semantic["--brand"] != "#C8246B" || out.Brand.Logo != nil {
 		t.Fatalf("suggestion %s", raw)
 	}
 	var assetsBefore int
