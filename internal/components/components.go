@@ -164,6 +164,41 @@ func table(class string, aligns []string, head []string, body []pandocast.Row, f
 	}
 }
 
+// dropEmptyColumns removes every column (from aligns, head and body rows)
+// whose body cells are all empty, except the indexes listed in keep. Rows are
+// rebuilt so the inputs are not mutated.
+func dropEmptyColumns(aligns, head []string, body []pandocast.Row, keep ...int) ([]string, []string, []pandocast.Row) {
+	used := make([]bool, len(aligns))
+	for _, k := range keep {
+		used[k] = true
+	}
+	for _, r := range body {
+		for i, c := range r.Cells {
+			if len(c.Blocks) > 0 {
+				used[i] = true
+			}
+		}
+	}
+	var a, h []string
+	for i := range aligns {
+		if used[i] {
+			a, h = append(a, aligns[i]), append(h, head[i])
+		}
+	}
+	rows := make([]pandocast.Row, len(body))
+	for ri, r := range body {
+		nr := r
+		nr.Cells = nil
+		for i, c := range r.Cells {
+			if used[i] {
+				nr.Cells = append(nr.Cells, c)
+			}
+		}
+		rows[ri] = nr
+	}
+	return a, h, rows
+}
+
 func str(m map[string]any, k string) string {
 	if s, ok := m[k].(string); ok {
 		return strings.TrimSpace(s)

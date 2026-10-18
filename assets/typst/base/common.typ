@@ -28,7 +28,7 @@
           if brand.header.show_logo and folio-get(brand, "logo") != none {
             image("/" + brand.logo.path, height: 7mm)
           } else { [] },
-          brand.header.text)
+          if brand.header.text != "" { brand.header.text } else { meta.title })
       }
     },
     footer: context {
@@ -47,9 +47,12 @@
   show heading.where(level: 2): set text(size: 13pt)
   set heading(numbering: if options.heading_numbering { "1.1" } else { none })
   show link: set text(fill: primary)
-  set table(stroke: (x, y) => if y == 0 { (bottom: 0.7pt + primary) } else { (bottom: 0.3pt + muted.lighten(60%)) },
-    inset: (x: 5pt, y: 4pt))
-  show table.cell.where(y: 0): set text(weight: "bold")
+  // Header styling applies only to real header rows (table.header); header-less
+  // tables (info, signatures) get plain rows. Cell text is never justified.
+  set table(stroke: (bottom: 0.3pt + muted.lighten(60%)), inset: (x: 5pt, y: 4pt))
+  show table.header: set text(weight: "bold")
+  show table.header: set table.cell(stroke: (bottom: 0.7pt + primary))
+  show table.cell: set par(justify: false)
   set image(width: auto)
   body
 }
