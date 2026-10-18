@@ -111,6 +111,10 @@ func (s *Service) Upload(ctx context.Context, actor string, req UploadRequest) (
 		if err != nil {
 			return nil, fmt.Errorf("assets: rendition: %w", err)
 		}
+		if int64(cfg.Width)*int64(cfg.Height) > MaxPixels || int64(len(pngData)) > s.MaxBytes {
+			return nil, &model.Error{Code: model.ErrTooLarge,
+				Message: fmt.Sprintf("the SVG rasterises to %dx%d px (%d bytes); reduce its width/height (limit %d pixels, %d bytes)", cfg.Width, cfg.Height, len(pngData), MaxPixels, s.MaxBytes)}
+		}
 		if a.Width == 0 || a.Height == 0 {
 			a.Width, a.Height = cfg.Width, cfg.Height
 		}

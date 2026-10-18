@@ -3,11 +3,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"image/png"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -72,6 +74,14 @@ func (d *dirAssets) Asset(ctx context.Context, id string, _ bool) (model.Resolve
 		if san.MIME == assets.MIMESVG {
 			if a.PNG, err = d.engine.SVGToPNG(ctx, san.Data); err != nil {
 				return model.ResolvedAsset{}, fmt.Errorf("asset %s: %w", id, err)
+			}
+			cfg, err := png.DecodeConfig(bytes.NewReader(a.PNG))
+			if err != nil {
+				return model.ResolvedAsset{}, fmt.Errorf("asset %s: rendition: %w", id, err)
+			}
+			if int64(cfg.Width)*int64(cfg.Height) > assets.MaxPixels || int64(len(a.PNG)) > d.max {
+				return model.ResolvedAsset{}, fmt.Errorf("asset %s: %w: the SVG rasterises to %dx%d px (%d bytes); reduce its width/height (limit %d pixels, %d bytes)",
+					id, assets.ErrTooLarge, cfg.Width, cfg.Height, len(a.PNG), assets.MaxPixels, d.max)
 			}
 		}
 		d.cache[id] = a

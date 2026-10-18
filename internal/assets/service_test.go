@@ -5,7 +5,9 @@ package assets
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"testing"
 	"time"
 
@@ -95,5 +97,34 @@ func TestListNewestFirstSkipsDeleted(t *testing.T) {
 	}
 	if got, _, _ := s.List(ctx, "GAMMA", 10, ""); len(got) != 1 {
 		t.Fatalf("query: %d", len(got))
+	}
+}
+
+// pngHeader returns a PNG whose IHDR declares w×h (the image data is a 1×1
+// stream; png.DecodeConfig reads only the header).
+func pngHeader(t *testing.T, w, h uint32) []byte {
+	t.Helper()
+	b := pngBytes(t, 1, 1)
+	ihdr := b[8+8 : 8+8+13] // signature, length+type, then 13 bytes of IHDR data
+	binary.BigEndian.PutUint32(ihdr[0:4], w)
+	binary.BigEndian.PutUint32(ihdr[4:8], h)
+	binary.BigEndian.PutUint32(b[8+8+13:8+8+13+4], crc32.ChecksumIEEE(b[8+4:8+8+13]))
+	return b
+}
+
+// An SVG that passes the sanitiser but declares a huge canvas rasterises (at
+// 300 ppi) to a PNG far beyond the pixel limit; the upload must refuse it
+// instead of storing the rendition.
+func TestUploadRejectsOversizedSVGRendition(t *testing.T) {
+	s := newService(t)
+	s.Raster = fakeRaster{png: pngHeader(t, 12500, 12500)} // what 4000×4000 px yields at 300 ppi
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="4000"><rect width="4000" height="4000"/></svg>`
+	_, err := s.Upload(context.Background(), "alice", UploadRequest{Name: "huge.svg", ContentBase64: base64.StdEncoding.EncodeToString([]byte(svg))})
+	var me *model.Error
+	if !errors.As(err, &me) || me.Code != model.ErrTooLarge {
+		t.Fatalf("err = %v, want too_large", err)
+	}
+	if list, _, err := s.List(context.Background(), "", 10, ""); err != nil || len(list) != 0 {
+		t.Fatalf("oversized SVG stored: %+v %v", list, err)
 	}
 }
