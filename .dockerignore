@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Keep the build context small and free of secrets and local state.
+.git
+.github
+.claude
+.claude-plugin
+.delivery
+.remember
+.env
+.env.*
+*-api-key.txt
+docs
+skills
+data
+bin
+dist
+folio
+*.test
+*.out
