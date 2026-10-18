@@ -181,3 +181,21 @@ func TestReviewerFromConfiguration(t *testing.T) {
 		t.Fatal("the API key reached the logs")
 	}
 }
+
+// TestReviewerHonoursBaseURL: FOLIO_OPENROUTER_BASE_URL points the
+// configured reviewer at a stub (the Playwright job relies on it).
+func TestReviewerHonoursBaseURL(t *testing.T) {
+	stub := &openRouterStub{mode: "ok"}
+	srv := httptest.NewServer(stub)
+	defer srv.Close()
+	h := start(t, map[string]string{"FOLIO_SEED": "false", "FOLIO_OPENROUTER_API_KEY": e2eOpenRouterKey,
+		"FOLIO_OPENROUTER_BASE_URL": srv.URL + "/api/v1"}, nil)
+	h.ok("create_brand", map[string]any{"brand": brandSpec("e2e", "")}, nil)
+	var tr mcpserver.TemplateResultOut
+	h.ok("create_template", map[string]any{"template": memoTemplate("memo", "e2e", nil)}, &tr)
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	if stub.calls != 1 || !stub.denyEvery || tr.Review == nil || tr.Review.Status != "ok" {
+		t.Fatalf("stub calls %d deny=%v review %+v", stub.calls, stub.denyEvery, tr.Review)
+	}
+}
