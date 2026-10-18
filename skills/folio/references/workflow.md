@@ -97,6 +97,11 @@ fails, it returns a retryable `unavailable`;
 `get_capabilities.reviewer_enabled` tells you in advance. Check pages
 yourself with `get_document(include_previews='all')` instead.
 
+When a reviewer is configured, `create_template` and `update_template` also
+return a `review` of the sample render (`status` `ok` or `unavailable`, plus
+advisory `findings`). It is not stored and never blocks the template: read
+it, fix what matters with `update_template`, and ignore what does not.
+
 ## Templates and brands
 
 Read `get_guide('templates')`, `get_guide('brands')` and, for custom layouts,

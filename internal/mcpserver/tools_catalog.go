@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,6 +15,7 @@ import (
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/components"
 	"github.com/vocdoni/folio/internal/model"
+	"github.com/vocdoni/folio/internal/review"
 )
 
 // ---- get_guide / get_capabilities ----
@@ -218,11 +220,21 @@ type PreviewTemplateIn struct {
 }
 
 type TemplateResultOut struct {
-	ID       string          `json:"id"`
-	Version  int             `json:"version"`
-	Files    []FileOut       `json:"files" jsonschema:"sample render: pdf and docx; links expire after the preview retention"`
-	Previews []string        `json:"previews" jsonschema:"URLs of stored preview PNGs"`
-	Warnings []model.Finding `json:"warnings"`
+	ID       string             `json:"id"`
+	Version  int                `json:"version"`
+	Files    []FileOut          `json:"files" jsonschema:"sample render: pdf and docx; links expire after the preview retention"`
+	Previews []string           `json:"previews" jsonschema:"URLs of stored preview PNGs"`
+	Warnings []model.Finding    `json:"warnings"`
+	Review   *TemplateReviewOut `json:"review,omitempty" jsonschema:"advisory AI review of the sample render (create_template and update_template, only when the server has a reviewer); never blocks the template"`
+}
+
+// TemplateReviewOut is the advisory AI review of a template's sample render.
+// It is returned, not stored, and never changes the outcome of the call.
+type TemplateReviewOut struct {
+	Advisory bool             `json:"advisory" jsonschema:"always true: findings are advice, the template was saved"`
+	Status   string           `json:"status" jsonschema:"ok, or unavailable when the reviewer failed or timed out (the template was saved anyway)"`
+	Pages    []int            `json:"pages" jsonschema:"pages that were reviewed"`
+	Findings []review.Finding `json:"findings"`
 }
 
 func (c *call) templateResult(ctx context.Context, r *catalog.TemplateResult, mode string) (*TemplateResultOut, error) {
@@ -238,6 +250,60 @@ func (c *call) templateResult(ctx context.Context, r *catalog.TemplateResult, mo
 		previews = []string{}
 	}
 	return &TemplateResultOut{ID: r.ID, Version: r.Version, Files: files, Previews: previews, Warnings: w}, nil
+}
+
+// reviewTemplate asks the reviewer, when one is configured, to look at the
+// sample render of a template that was just saved. Failures are logged and
+// reported as status "unavailable"; they never fail the call.
+func (c *call) reviewTemplate(ctx context.Context, r *catalog.TemplateResult, t model.Template) *TemplateReviewOut {
+	d := c.d
+	if d.Reviewer == nil {
+		return nil
+	}
+	out := &TemplateReviewOut{Advisory: true, Status: "unavailable", Pages: []int{}, Findings: []review.Finding{}}
+	pageCount := 0
+	for _, f := range r.Files {
+		if f.Kind == "pdf" {
+			pageCount = c.pdfPages(f)
+		}
+	}
+	pages, err := reviewPages(nil, pageCount, d.Config.ReviewMaxPages)
+	if err != nil {
+		d.Logger.WarnContext(ctx, "ai review of template sample skipped", "template", r.ID, "version", r.Version, "err", err)
+		return out
+	}
+	imgs, err := c.pagePNGs(ctx, r.Files, pages)
+	if err != nil {
+		d.Logger.WarnContext(ctx, "ai review of template sample skipped", "template", r.ID, "version", r.Version, "err", err)
+		return out
+	}
+	rp := make([]review.Page, 0, len(pages))
+	for _, p := range pages {
+		rp = append(rp, review.Page{Number: p, PNG: imgs[p]})
+	}
+	var meta struct {
+		Language string `json:"language"`
+	}
+	_ = json.Unmarshal(t.Sample.Metadata, &meta)
+	findings, err := d.Reviewer.Review(ctx, rp, review.Info{TemplateID: r.ID, Language: meta.Language})
+	if err != nil {
+		d.Logger.WarnContext(ctx, "ai review of template sample failed", "template", r.ID, "version", r.Version, "err", err)
+		return out
+	}
+	out.Status, out.Pages, out.Findings = "ok", pages, review.Normalize(findings, pages)
+	return out
+}
+
+// reviewNote summarises a template review for the one-line summary.
+func reviewNote(r *TemplateReviewOut) string {
+	switch {
+	case r == nil:
+		return ""
+	case r.Status != "ok":
+		return ", AI review unavailable"
+	default:
+		return fmt.Sprintf(", %d advisory AI finding(s)", len(r.Findings))
+	}
 }
 
 func templateSummary(it *catalog.Item) TemplateSummary {
@@ -270,9 +336,9 @@ const (
 
 	descGetTemplate = `Get a template (latest or a given version): sections (required ones and their aliases), metadata_schema and data_schema (what metadata and data render_document needs), components, body_skeleton (start your Markdown from it), a complete sample, labels, layout, and versions [{version, note, created_by, created_at}]. The template object is valid create_template / update_template input (round-trippable). Read it before writing a document.`
 
-	descCreateTemplate = `Create a template (version 1). Folio validates the spec (schemas compile, sections, components, layout.options, custom typst imports) and renders the template's sample; the call fails with validation_failed if the sample render produces any error or any warning other than placeholder findings, so ship a complete sample. Returns the version, warnings, links to the sample PDF/DOCX and preview PNGs (they expire). Read get_guide('templates') and, for custom layouts, get_guide('typst-layouts') first. brand_id must name an existing, unarchived brand.`
+	descCreateTemplate = `Create a template (version 1). Folio validates the spec (schemas compile, sections, components, layout.options, custom typst imports) and renders the template's sample; the call fails with validation_failed if the sample render produces any error or any warning other than placeholder findings, so ship a complete sample. Returns the version, warnings, links to the sample PDF/DOCX and preview PNGs (they expire), and, when the server has an AI reviewer, an advisory review of the sample (never blocking). Read get_guide('templates') and, for custom layouts, get_guide('typst-layouts') first. brand_id must name an existing, unarchived brand.`
 
-	descUpdateTemplate = `Create a new version of a template with the same checks as create_template (spec validation plus a sample render). expected_version must equal the latest version (get_template), otherwise conflict with the latest version reported: re-read, re-apply, retry. template.id must equal id. The newest version is used for new renders immediately; existing documents keep their version.`
+	descUpdateTemplate = `Create a new version of a template with the same checks as create_template (spec validation plus a sample render, and the advisory AI review of the sample when enabled). expected_version must equal the latest version (get_template), otherwise conflict with the latest version reported: re-read, re-apply, retry. template.id must equal id. The newest version is used for new renders immediately; existing documents keep their version.`
 
 	descArchiveTemplate = `Archive (archived=true) or restore (archived=false) a template. Archived templates are hidden from list_templates and render_document fails with archived; versions stay available for existing documents. Reversible.`
 
@@ -407,8 +473,16 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, err
 			}
-			c.Summary("created template %s v%d (%d warning(s))", r.ID, r.Version, len(r.Warnings))
-			return c.templateResult(ctx, r, previewsNone)
+			out, err := c.templateResult(ctx, r, previewsNone)
+			if err != nil {
+				return nil, err
+			}
+			if d.Reviewer != nil {
+				p.Step(ctx, "reviewing the sample")
+			}
+			out.Review = c.reviewTemplate(ctx, r, in.Template)
+			c.Summary("created template %s v%d (%d warning(s)%s)", r.ID, r.Version, len(r.Warnings), reviewNote(out.Review))
+			return out, nil
 		}})
 
 	register(s, d, tool[UpdateTemplateIn, TemplateResultOut]{Name: "update_template", Title: "Update a template", Description: descUpdateTemplate, Access: write,
@@ -420,8 +494,16 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, err
 			}
-			c.Summary("template %s is now v%d (%d warning(s))", r.ID, r.Version, len(r.Warnings))
-			return c.templateResult(ctx, r, previewsNone)
+			out, err := c.templateResult(ctx, r, previewsNone)
+			if err != nil {
+				return nil, err
+			}
+			if d.Reviewer != nil {
+				p.Step(ctx, "reviewing the sample")
+			}
+			out.Review = c.reviewTemplate(ctx, r, in.Template)
+			c.Summary("template %s is now v%d (%d warning(s)%s)", r.ID, r.Version, len(r.Warnings), reviewNote(out.Review))
+			return out, nil
 		}})
 
 	register(s, d, tool[ArchiveIn, ArchiveOut]{Name: "archive_template", Title: "Archive or restore a template", Description: descArchiveTemplate, Access: write, Idempotent: true,
