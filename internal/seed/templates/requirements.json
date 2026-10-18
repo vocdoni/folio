@@ -1,0 +1,150 @@
+{
+  "id": "requirements",
+  "name": "Requirements specification",
+  "description": "Software or project requirements with scope, stakeholders and functional and non-functional requirements.",
+  "category": "requirements",
+  "brand_id": "example",
+  "languages": [
+    "en",
+    "es",
+    "ca"
+  ],
+  "layout": {
+    "base": "report",
+    "typst": null,
+    "options": {
+      "cover": true,
+      "toc": true,
+      "page_size": "a4",
+      "heading_numbering": true
+    }
+  },
+  "metadata_schema": {
+    "type": "object",
+    "required": [
+      "project"
+    ],
+    "properties": {
+      "project": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "data_schema": {
+    "type": "object",
+    "properties": {
+      "deliverables": {
+        "$ref": "folio:component/deliverables"
+      }
+    }
+  },
+  "sections": [
+    {
+      "title": "Introduction",
+      "required": true,
+      "aliases": [
+        "Introducción",
+        "Introducció"
+      ],
+      "hint": "Purpose of the document and the problem being solved."
+    },
+    {
+      "title": "Scope",
+      "required": true,
+      "aliases": [
+        "Alcance",
+        "Abast"
+      ],
+      "hint": "What the system does and does not cover."
+    },
+    {
+      "title": "Stakeholders",
+      "aliases": [
+        "Partes interesadas",
+        "Parts interessades"
+      ]
+    },
+    {
+      "title": "Functional requirements",
+      "required": true,
+      "aliases": [
+        "Requisitos funcionales",
+        "Requisits funcionals"
+      ],
+      "hint": "One requirement per row or bullet, each with a stable identifier."
+    },
+    {
+      "title": "Non-functional requirements",
+      "required": true,
+      "aliases": [
+        "Requisitos no funcionales",
+        "Requisits no funcionals"
+      ],
+      "hint": "Performance, security, accessibility, availability."
+    },
+    {
+      "title": "Constraints",
+      "aliases": [
+        "Restricciones",
+        "Restriccions"
+      ]
+    },
+    {
+      "title": "Deliverables",
+      "aliases": [
+        "Entregables",
+        "Lliurables"
+      ],
+      "component": "deliverables"
+    },
+    {
+      "title": "Glossary",
+      "aliases": [
+        "Glosario",
+        "Glossari"
+      ]
+    }
+  ],
+  "components": [
+    "info",
+    "deliverables"
+  ],
+  "strict": false,
+  "body_skeleton": "# Introduction\n\nTODO\n\n::: folio-info\n:::\n\n# Scope\n\n- TODO\n\n# Functional requirements\n\n| ID | Requirement | Priority |\n|----|-------------|----------|\n| FR-1 | TODO | Must |\n\n# Non-functional requirements\n\n- TODO\n\n# Deliverables\n\n::: folio-deliverables\n:::\n",
+  "sample": {
+    "markdown": "# Introduction\n\nThis document defines the requirements for the ACME customer portal, a web application where business customers manage orders, invoices and support requests. It is the baseline for design, development and acceptance testing.\n\n::: folio-info\n:::\n\n# Scope\n\nThe portal covers:\n\n- Customer sign-in with single sign-on and role-based access\n- Order history, order tracking and re-ordering\n- Invoice list, download and payment status\n- Support tickets with attachments and status updates\n\nOut of scope for the first release are the mobile applications and the integration with the legacy warehouse system.\n\n# Stakeholders\n\n| Role | Name | Interest |\n|------|------|----------|\n| Product owner | John Smith | Priorities and acceptance |\n| Customer support lead | Maria Lopez | Ticket workflow |\n| Finance controller | Peter Brown | Invoice accuracy |\n\n# Functional requirements\n\n| ID | Requirement | Priority |\n|----|-------------|----------|\n| FR-1 | Users sign in with the corporate identity provider. | Must |\n| FR-2 | Users see the status of every open order. | Must |\n| FR-3 | Users download invoices as PDF. | Must |\n| FR-4 | Users open and follow support tickets. | Should |\n| FR-5 | Administrators invite and remove users of their company. | Should |\n\n# Non-functional requirements\n\n- **Performance:** pages load in under 2 seconds at the 95th percentile with 500 concurrent users.\n- **Availability:** 99.5% monthly uptime, excluding planned maintenance.\n- **Security:** all traffic uses TLS 1.2 or later, and personal data is encrypted at rest.\n- **Accessibility:** the interface conforms to WCAG 2.2 level AA.\n\n# Constraints\n\n- The portal runs on ACME's existing cloud tenant in the EU region.\n- The first release goes live before 31 March 2027.\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Glossary\n\n**SSO**\n: Single sign-on, one login shared across several applications.\n\n**WCAG**\n: Web Content Accessibility Guidelines.\n",
+    "metadata": {
+      "title": "Customer portal requirements",
+      "date": "2026-10-18",
+      "language": "en",
+      "client": "ACME Corp",
+      "project": "Customer portal",
+      "reference": "EX-2026-052",
+      "author": "Jane Doe",
+      "version_label": "v0.9"
+    },
+    "data": {
+      "deliverables": [
+        {
+          "id": "D1",
+          "name": "Requirements baseline",
+          "due": "2026-11-06",
+          "acceptance": "Signed off by the product owner"
+        },
+        {
+          "id": "D2",
+          "name": "Prioritised backlog",
+          "due": "2026-11-20",
+          "acceptance": "Every Must requirement has a story"
+        },
+        {
+          "id": "D3",
+          "name": "Acceptance test plan",
+          "due": "2026-12-04",
+          "acceptance": "Each requirement maps to at least one test"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,185 @@
+{
+  "id": "quote",
+  "name": "Quote",
+  "description": "Priced quote with itemised budget, payment schedule and acceptance signatures.",
+  "category": "quote",
+  "brand_id": "example",
+  "languages": [
+    "en",
+    "es",
+    "ca"
+  ],
+  "layout": {
+    "base": "quote",
+    "typst": null,
+    "options": {
+      "cover": false,
+      "toc": false,
+      "page_size": "a4",
+      "heading_numbering": false
+    }
+  },
+  "metadata_schema": {
+    "type": "object",
+    "required": [
+      "client",
+      "reference"
+    ],
+    "properties": {
+      "client": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reference": {
+        "type": "string",
+        "minLength": 1
+      },
+      "valid_until": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      }
+    }
+  },
+  "data_schema": {
+    "type": "object",
+    "required": [
+      "budget"
+    ],
+    "properties": {
+      "budget": {
+        "$ref": "folio:component/budget"
+      },
+      "milestones": {
+        "$ref": "folio:component/milestones"
+      },
+      "signatures": {
+        "$ref": "folio:component/signatures"
+      }
+    }
+  },
+  "sections": [
+    {
+      "title": "Summary",
+      "aliases": [
+        "Resumen",
+        "Resum"
+      ]
+    },
+    {
+      "title": "Items",
+      "required": true,
+      "aliases": [
+        "Conceptos",
+        "Conceptes"
+      ],
+      "component": "budget"
+    },
+    {
+      "title": "Payment terms",
+      "aliases": [
+        "Condiciones de pago",
+        "Condicions de pagament"
+      ],
+      "component": "milestones"
+    },
+    {
+      "title": "Validity",
+      "aliases": [
+        "Validez",
+        "Validesa"
+      ]
+    },
+    {
+      "title": "Acceptance",
+      "aliases": [
+        "Aceptación",
+        "Acceptació"
+      ],
+      "component": "signatures"
+    }
+  ],
+  "components": [
+    "budget",
+    "milestones",
+    "signatures",
+    "info"
+  ],
+  "strict": false,
+  "body_skeleton": "# Summary\n\nTODO\n\n::: folio-info\n:::\n\n# Items\n\n::: folio-budget\n:::\n\n# Payment terms\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+  "sample": {
+    "markdown": "# Summary\n\nThank you for your interest. This quote covers the supply and installation of the equipment and services listed below for ACME's new Barcelona office.\n\n::: folio-info\n:::\n\n# Items\n\n::: folio-budget\n:::\n\n# Payment terms\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Validity\n\nThis quote is valid for 30 days from its date. Delivery times start from written acceptance. Prices exclude VAT unless stated otherwise.\n\n# Acceptance\n\nBy signing below, ACME Corp accepts this quote and its terms.\n\n::: folio-signatures\n:::\n",
+    "metadata": {
+      "title": "Office network installation quote",
+      "date": "2026-10-18",
+      "language": "en",
+      "client": "ACME Corp",
+      "reference": "Q-2026-117",
+      "project": "Barcelona office",
+      "author": "Jane Doe",
+      "valid_until": "2026-11-17"
+    },
+    "data": {
+      "budget": {
+        "currency": "EUR",
+        "tax_rate": "21",
+        "items": [
+          {
+            "description": "Managed switch, 48 ports",
+            "quantity": "4",
+            "unit": "unit",
+            "unit_price": "890"
+          },
+          {
+            "description": "Wi-Fi 6 access point",
+            "quantity": "12",
+            "unit": "unit",
+            "unit_price": "240",
+            "discount_pct": "5"
+          },
+          {
+            "description": "Structured cabling and installation",
+            "quantity": "3",
+            "unit": "day",
+            "unit_price": "720"
+          },
+          {
+            "description": "Configuration and acceptance testing",
+            "quantity": "2",
+            "unit": "day",
+            "unit_price": "650"
+          }
+        ],
+        "notes": "Hardware carries a three-year manufacturer warranty."
+      },
+      "milestones": [
+        {
+          "name": "On acceptance",
+          "date": "2026-11-20",
+          "payment_pct": "40"
+        },
+        {
+          "name": "On delivery of hardware",
+          "date": "2026-12-11",
+          "payment_pct": "40"
+        },
+        {
+          "name": "On completion",
+          "date": "2027-01-15",
+          "payment_pct": "20"
+        }
+      ],
+      "signatures": [
+        {
+          "name": "Jane Doe",
+          "role": "Sales Manager",
+          "organization": "Example Co"
+        },
+        {
+          "name": "John Smith",
+          "role": "Office Manager",
+          "organization": "ACME Corp"
+        }
+      ]
+    }
+  }
+}
