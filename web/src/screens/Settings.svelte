@@ -4,18 +4,38 @@
   import { api } from '../lib/api';
   import { session } from '../lib/session.svelte';
   import { clock } from '../lib/format';
-  import type { Stats } from '../lib/types';
+  import type { Connection, Stats } from '../lib/types';
   import Copy from '../components/Copy.svelte';
+  import Icon from '../components/Icon.svelte';
+  import PiConnect from '../components/PiConnect.svelte';
+  import { MASK, claudeInstall, claudePlugin, examplePrompts, skillInstall, snippets } from '../lib/connect';
 
   let stats = $state<Stats | null>(null);
+  let conn = $state<Connection | null>(null);
+  let connError = $state('');
+  let picked = $state(0);
+  let shown = $state(false);
   onMount(async () => {
     stats = await api.get<Stats>('/stats');
     await session.refreshAI();
   });
-  const mcp = $derived(session.caps?.mcp_url ?? location.origin + '/mcp');
-  const claude = $derived(`claude mcp add --transport http folio ${mcp} \\\n  --header "Authorization: Bearer <your-token>"`);
-  const codex = $derived(`[mcp_servers.folio]\nurl = "${mcp}"\nbearer_token_env_var = "FOLIO_TOKEN"`);
-  const cursor = $derived(JSON.stringify({ mcpServers: { folio: { url: mcp, headers: { Authorization: 'Bearer <your-token>' } } } }, null, 2));
+  onMount(async () => {
+    try {
+      conn = await api.get<Connection>('/connection');
+    } catch (e) {
+      connError = e instanceof Error ? e.message : 'Folio could not load the connection details.';
+    }
+  });
+  const mcp = $derived(conn?.mcp_url ?? session.caps?.mcp_url ?? location.origin + '/mcp');
+  const base = $derived(mcp.replace(/\/mcp$/, ''));
+  const tokens = $derived(conn?.tokens ?? []);
+  const current = $derived(tokens[Math.min(picked, Math.max(tokens.length - 1, 0))]);
+  // null: this Folio asks for no token. While loading, show a placeholder.
+  const realToken = $derived(conn ? (current?.token ?? null) : '<your-token>');
+  const real = $derived(snippets({ mcpUrl: mcp, token: realToken }));
+  const masked = $derived(snippets({ mcpUrl: mcp, token: realToken !== null && conn ? MASK : realToken }));
+  const display = $derived(shown ? real : masked);
+  const shownToken = $derived(realToken !== null && conn ? (shown ? realToken : MASK) : realToken);
 </script>
 
 <div class="page">
@@ -27,6 +47,7 @@
   </div>
 
   <div class="cols">
+    <div class="stack">
     <section class="sheet" aria-labelledby="about-h">
       <h2 id="about-h" class="sheet-title">This server</h2>
       <dl class="facts">
@@ -48,19 +69,81 @@
       <p class="small muted">The assistants send only what you give them (text, an example file, a logo or a website’s colours) to the model, and only when you ask. Their answers are proposals you check before anything is saved.</p>
     </section>
 
-    <section class="sheet" aria-labelledby="connect-h">
-      <h2 id="connect-h" class="sheet-title">Connect an agent</h2>
-      <p>Agents talk to Folio over MCP with a token from FOLIO_TOKEN or FOLIO_TOKENS. Replace <span class="code">&lt;your-token&gt;</span> with yours.</p>
-      <h3>MCP address</h3>
-      <Copy text={mcp} label="MCP address" />
-      <h3>Claude Code</h3>
-      <Copy text={claude} label="Claude Code command" />
-      <p class="small muted">Or install the Folio plugin from the repository this Folio was built from: <span class="code">/plugin marketplace add &lt;owner&gt;/&lt;repository&gt;</span>, then <span class="code">/plugin install folio@folio</span>. It asks for the address and the token.</p>
-      <h3>Codex</h3>
-      <Copy text={codex} label="Codex configuration" />
-      <h3>Cursor</h3>
-      <Copy text={cursor} label="Cursor configuration" />
+    <section class="sheet" aria-labelledby="ask-h">
+      <h2 id="ask-h" class="sheet-title">Things to ask your agent</h2>
+      <p>Once Folio is connected, you can ask for things like this. Folio never changes your wording or your figures.</p>
+      <ul class="prompts">
+        {#each examplePrompts as p (p.title)}
+          <li>
+            <div class="ptitle">{p.title}</div>
+            <Copy text={p.text} label={`prompt: ${p.title}`} />
+          </li>
+        {/each}
+      </ul>
+      <p class="small muted">To build a brand from a website, use Brands in this app: paste the address and Folio suggests colours and a logo for you to check.</p>
     </section>
+    </div>
+
+    <div class="stack">
+    <section class="sheet" aria-labelledby="connect-h">
+      <h2 id="connect-h" class="sheet-title">Connect your agents</h2>
+      <p>Agents talk to Folio over MCP. Everything below sets Folio up for your whole account, not just one project.</p>
+      <h3>Folio address</h3>
+      <Copy text={base} label="Folio address" />
+      <p class="small muted">The MCP address, used by the agents further down, is <span class="code">{mcp}</span>.</p>
+      {#if connError}
+        <p class="note error" role="alert">{connError}</p>
+      {:else if conn && tokens.length === 0}
+        <p class="note">This Folio does not ask for a token, so nothing below needs one.</p>
+      {:else if conn && current}
+        <h3>Access token</h3>
+        {#if tokens.length > 1}
+          <div class="field">
+            <label for="token-pick">Token for</label>
+            <select id="token-pick" bind:value={picked}>
+              {#each tokens as t, i (t.name)}<option value={i}>{t.name}</option>{/each}
+            </select>
+          </div>
+        {/if}
+        <div class="tokenrow">
+          <Copy text={current.token} display={shown ? current.token : MASK} label={tokens.length > 1 ? `token ${current.name}` : 'token'} />
+          <button class="btn small" aria-pressed={shown} onclick={() => (shown = !shown)}>
+            <Icon name={shown ? 'hide' : 'show'} />{shown ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        <p class="note warn">Anyone with this token can use Folio as you. Keep it out of shared repositories.</p>
+      {/if}
+
+      <h3>Claude Code</h3>
+      <p>Install the Folio plugin. It sets up the MCP connection and the Folio skill together. The token is stored in your system keychain.</p>
+      <Copy text={claudeInstall(base, realToken)} display={claudeInstall(base, shownToken)} label="Claude Code install command" />
+      <p class="small muted">Prefer to type the details yourself? Inside a Claude Code session, run these and paste the Folio address and the access token when asked:</p>
+      <Copy text={claudePlugin.inSession} label="Claude Code in-session commands" />
+
+      <h3>Codex</h3>
+      <p class="small muted">Add this to <span class="code">~/.codex/config.toml</span>.</p>
+      <Copy text={real.codex} display={display.codex} label="Codex configuration" />
+      <h3>Cursor</h3>
+      <p class="small muted">Save this as <span class="code">~/.cursor/mcp.json</span>.</p>
+      <Copy text={real.cursor} display={display.cursor} label="Cursor configuration" />
+      <h3>Gemini CLI</h3>
+      <p class="small muted">Add this to <span class="code">~/.gemini/settings.json</span>.</p>
+      <Copy text={real.gemini} display={display.gemini} label="Gemini CLI configuration" />
+      <PiConnect {base} token={realToken} shown={shownToken} />
+    </section>
+
+    <section class="sheet" aria-labelledby="skill-h">
+      <h2 id="skill-h" class="sheet-title">Install the skill without the plugin</h2>
+      <p>The skill is one file that teaches an agent how to use Folio well. Claude Code gets it from the plugin. For other agents, save it in their skills folder.</p>
+      <h3>Codex</h3>
+      <Copy text={skillInstall(base, '~/.codex/skills')} label="Codex skill install command" />
+      <h3>pi</h3>
+      <p class="small muted">The pi setup above already includes this step.</p>
+      <h3>Other agents</h3>
+      <Copy text={skillInstall(base, '~/.agents/skills')} label="skill install command" />
+      <p class="small muted"><span class="code">~/.agents/skills</span> is the shared Agent Skills folder that several agents read. If yours uses its own folder, change the path. You can also <a href="/skills/folio/SKILL.md">read SKILL.md</a> first.</p>
+    </section>
+    </div>
   </div>
 </div>
 
@@ -71,8 +154,31 @@
     gap: var(--s-5);
     align-items: start;
   }
-  .sheet + .sheet {
-    margin-top: 0;
+  .stack {
+    display: grid;
+    gap: var(--s-5);
+    min-width: 0;
+  }
+  .tokenrow {
+    display: flex;
+    gap: var(--s-2);
+    align-items: flex-start;
+  }
+  .tokenrow :global(.snippet) {
+    flex: 1;
+  }
+  .prompts {
+    list-style: none;
+    margin: 0 0 var(--s-4);
+    padding: 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .ptitle {
+    font-weight: 600;
+    color: var(--ink-2);
+    font-size: var(--fs-0);
+    margin-bottom: var(--s-1);
   }
   .facts {
     display: grid;
