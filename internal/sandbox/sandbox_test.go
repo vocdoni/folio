@@ -61,6 +61,8 @@ func helper(act string, args []string) int {
 		for {
 		}
 	case "alloc":
+		// The marker proves the helper started before the allocation.
+		fmt.Println(allocMarker)
 		b := make([]byte, 2<<30)
 		for i := 0; i < len(b); i += 4096 {
 			b[i] = 1
@@ -175,12 +177,28 @@ func TestMemoryLimit(t *testing.T) {
 	if raceEnabled {
 		t.Skip("SKIPPING under -race: the race runtime cannot start under RLIMIT_AS; covered by the non-race run")
 	}
+	// 1 GiB lets the Go helper start (a smaller limit kills it during runtime
+	// init), so the failure below comes from the 2 GiB allocation itself.
 	s, r := testSpec(t, "alloc")
-	s.Limits.MemoryBytes = 512 << 20
-	if _, err := r.Run(context.Background(), s, nil); err == nil {
-		t.Fatal("2 GiB allocation succeeded under a 512 MiB RLIMIT_AS")
+	s.Limits.MemoryBytes = 1 << 30
+	res, err := r.Run(context.Background(), s, nil)
+	if err == nil {
+		t.Fatal("2 GiB allocation succeeded under a 1 GiB RLIMIT_AS")
+	}
+	var ee *ExitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("err = %v, want *ExitError", err)
+	}
+	if !strings.Contains(string(res.Stdout), allocMarker) {
+		t.Fatalf("helper did not start under RLIMIT_AS (exit %d, stderr: %s)", ee.Code, ee.Stderr)
+	}
+	if !strings.Contains(string(ee.Stderr), "out of memory") {
+		t.Fatalf("exit %d is not an allocation refusal (stderr: %s)", ee.Code, ee.Stderr)
 	}
 }
+
+// allocMarker is printed by the "alloc" helper right before it allocates.
+const allocMarker = "folio-sandbox-alloc-start"
 
 func TestEnvironmentIsCleared(t *testing.T) {
 	t.Setenv("FOLIO_TOKEN", "must-not-leak-0123456789abcdef0123456789")
