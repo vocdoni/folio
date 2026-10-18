@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/vocdoni/folio/internal/mcpserver"
 )
 
 var root = filepath.Join("..", "..")
@@ -107,31 +109,28 @@ func TestSkillFrontmatter(t *testing.T) {
 	}
 }
 
-// TestSkillReferencesLinked checks that SKILL.md links every reference, that
-// every link resolves, and that references are one level deep.
-func TestSkillReferencesLinked(t *testing.T) {
+// TestSkillIsOneFileWithGuideIndex checks that the skill is a single
+// SKILL.md and that its "Deeper guides" section names every guide topic for
+// get_guide.
+func TestSkillIsOneFileWithGuideIndex(t *testing.T) {
 	files, err := Files()
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(files) != 1 || files["SKILL.md"] == nil {
+		t.Fatalf("the skill must be exactly SKILL.md, got %d files", len(files))
+	}
 	_, body := splitSkill(t, files["SKILL.md"])
-	linkRE := regexp.MustCompile(`\]\((references/[^)]+)\)`)
-	linked := map[string]bool{}
-	for _, m := range linkRE.FindAllStringSubmatch(body, -1) {
-		linked[m[1]] = true
-		if _, ok := files[m[1]]; !ok {
-			t.Errorf("SKILL.md links %s, which is not generated", m[1])
+	_, guides, ok := strings.Cut(body, "## Deeper guides")
+	if !ok || !strings.Contains(guides, "get_guide") {
+		t.Fatal("SKILL.md needs a 'Deeper guides' section that tells the agent to call get_guide")
+	}
+	for _, topic := range mcpserver.Topics {
+		if !strings.Contains(guides, "- `"+topic+"`:") {
+			t.Errorf("Deeper guides does not list %q", topic)
 		}
 	}
-	for name := range files {
-		if name == "SKILL.md" {
-			continue
-		}
-		if strings.Count(name, "/") != 1 || !strings.HasPrefix(name, "references/") {
-			t.Errorf("%s: references must be files directly under references/", name)
-		}
-		if !linked[name] {
-			t.Errorf("SKILL.md does not link %s", name)
-		}
+	if strings.Contains(body, "references/") || strings.Contains(body, "claude mcp add") {
+		t.Error("SKILL.md must not link references/ or show a manual claude mcp add")
 	}
 }

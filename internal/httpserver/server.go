@@ -74,6 +74,9 @@ func NewHandler(o Options) (http.Handler, error) {
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(h)
 	})
+	if err := skillRoutes(mux); err != nil {
+		return nil, err
+	}
 	if o.UI != nil {
 		mux.Handle("/ui", o.UI)
 		mux.Handle("/ui/", o.UI)

@@ -2,7 +2,7 @@
 name: folio
 description: Create branded, consistently formatted PDF and editable DOCX business documents (proposals, quotes, budgets, statements of work, requirements, technical reports, letters) with a Folio server over MCP. Use when the user asks to write, format, brand, render, revise, publish or share such a document, to lay out a budget or quote with line items, totals and payment terms, or to create and manage Folio templates, brands and assets. Folio never changes content or figures, so send every value exactly as it should appear.
 license: AGPL-3.0-only
-compatibility: Needs a Folio server connected as an MCP server (Streamable HTTP with a bearer token), for example through the Folio Claude Code plugin or `claude mcp add --transport http`.
+compatibility: Needs a Folio server connected as an MCP server (Streamable HTTP with a bearer token), for example through the Folio Claude Code plugin.
 ---
 
 # Folio
@@ -16,10 +16,20 @@ structure, renders both files exactly as written and returns download links.
 
 The Folio tools (`list_templates`, `get_template`, `validate_document`,
 `render_document`, …) come from the Folio MCP server. If they are not
-available, ask the user to connect Folio (Claude Code plugin
-`/plugin install folio@folio`, or
-`claude mcp add --transport http folio https://<folio-host>/mcp --header "Authorization: Bearer <token>"`)
-instead of formatting the document yourself.
+available, ask the user to connect Folio instead of formatting the document
+yourself. In Claude Code the Folio plugin installs both the MCP connection
+and this skill for the user:
+
+```sh
+claude plugin install folio --marketplace vocdoni/folio --scope user \
+  --config folio_url=https://<folio-host> --config folio_token=<token>
+```
+
+(Inside a session, `/plugin marketplace add vocdoni/folio` and
+`/plugin install folio@folio` ask for the same two values.) The token is
+stored in the operating system's keychain. The Folio web UI
+(Settings, Connect your agents) shows the address, the token and the setup
+for other agents.
 
 ## Core workflow
 
@@ -52,16 +62,17 @@ instead of formatting the document yourself.
   readers. Everything on an instance is shared by all its users.
 - AI review findings (`review_document`) are advisory only.
 
-## References
+## Deeper guides
 
-Each reference is the same text the Folio server returns from
-`get_guide(topic)`; read the one you need, not all of them.
+This file is all you need for the usual flow. For details, call the MCP tool
+`get_guide` with one topic (read the one you need, not all of them). Each
+guide is the same text the Folio server serves:
 
-- [references/workflow.md](references/workflow.md): Workflow. Which Folio tools to call, in which order, for every common task.
-- [references/recipes.md](references/recipes.md): Recipes. Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, and creating a brand and template.
-- [references/markdown.md](references/markdown.md): Markdown. The Markdown dialect Folio accepts, how images, links and sections work, and the input limits.
-- [references/components.md](references/components.md): Components. Structured blocks (budget, milestones, deliverables, signatures, info): their data, placement rules and how they render.
-- [references/templates.md](references/templates.md): Templates. Every field of a template spec, how schemas, sections, samples and labels work, and how versions behave.
-- [references/typst-layouts.md](references/typst-layouts.md): Typst layouts. The contract a custom `layout.typst` must follow: inputs, imports, fonts, checks and an example.
-- [references/brands.md](references/brands.md): Brands. Every field of a brand (colours, fonts, logo, header, footer, DOCX fallbacks) and how brand versions are used.
-- [references/troubleshooting.md](references/troubleshooting.md): Troubleshooting. Every error code and finding code Folio returns, what it means and how to fix it.
+- `workflow`: Workflow. Which Folio tools to call, in which order, for every common task.
+- `recipes`: Recipes. Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, and creating a brand and template.
+- `markdown`: Markdown. The Markdown dialect Folio accepts, how images, links and sections work, and the input limits.
+- `components`: Components. Structured blocks (budget, milestones, deliverables, signatures, info): their data, placement rules and how they render.
+- `templates`: Templates. Every field of a template spec, how schemas, sections, samples and labels work, and how versions behave.
+- `typst-layouts`: Typst layouts. The contract a custom `layout.typst` must follow: inputs, imports, fonts, checks and an example.
+- `brands`: Brands. Every field of a brand (colours, fonts, logo, header, footer, DOCX fallbacks) and how brand versions are used.
+- `troubleshooting`: Troubleshooting. Every error code and finding code Folio returns, what it means and how to fix it.
