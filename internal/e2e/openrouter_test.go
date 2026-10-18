@@ -17,7 +17,7 @@ import (
 	"github.com/vocdoni/folio/internal/review"
 )
 
-const e2eOpenRouterKey = "sk-or-e2e-key-0123456789abcdef"
+const e2eOpenRouterKey = "sk-or-e2e-xxxxxxxxxxxxxxxx"
 
 // openRouterStub is a fake OpenRouter chat completions endpoint.
 type openRouterStub struct {

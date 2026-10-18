@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Known false positives in history: fake keys in test fixtures and an example idempotency
+# key in the README. The current tree uses obviously fake values; the rule stays enabled.
+f1d2a883c451188f7e9ec8a0e96f6544166fdc27:internal/e2e/openrouter_test.go:generic-api-key:20
+ef95a03b835d588db034878ca3619261e59a5770:internal/review/openrouter_test.go:generic-api-key:24
+16cb9d5ff40dea57c50652008f5afa1cc95340a6:README.md:generic-api-key:450
