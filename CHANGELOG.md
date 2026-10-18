@@ -36,7 +36,7 @@ Planned as 0.1.0, the first release.
 - Optional advisory AI visual reviewer through OpenRouter.
 - Web UI at `/ui` behind `FOLIO_UI_PASSWORD`: documents as page proofs with
   PDF and DOCX downloads, create from Markdown, template studio with live
-  proof, brands and images; signed sessions, CSRF and Origin checks, rate
+  proof, brands and images; server-side sessions, CSRF and Origin checks, rate
   limits and a strict CSP.
 - AI assistants in the web UI (draft a template, fill in from text, suggest
   a brand) through OpenRouter; proposals only, nothing saved until you save,

@@ -86,6 +86,14 @@ openssl rand -base64 24 | tr -d '\n' | railway variable set --service folio --st
 Without the variable `/ui` answers 404. Sessions live in memory, so a deploy
 signs everyone out.
 
+Railway's proxy connects to the container from a private address (100.64.0.0/10 or the
+fd00::/8 private network), which is inside Folio's default `FOLIO_TRUSTED_PROXIES`, so
+sign-in rate limits apply per visitor (`X-Forwarded-For`). Confirm it once after the first
+deploy: with `FOLIO_LOG_LEVEL=debug` the first sign-in logs
+`web UI login: client address source for rate limiting source=x-forwarded-for`. If it says
+`source=peer`, add the proxy's address range to `FOLIO_TRUSTED_PROXIES`; otherwise all
+visitors share one limit of five attempts a minute.
+
 ## 4. Domain and health check
 
 **Service → Settings → Networking**: add your custom domain
@@ -167,5 +175,6 @@ or it will redeploy `latest`.
 | Renders fail with `busy` | raise `FOLIO_RENDER_CONCURRENCY` (and the service memory) or `FOLIO_RENDER_QUEUE` |
 | Download links point to the wrong host | fix `FOLIO_PUBLIC_URL` |
 | `/ui` answers 404 | `FOLIO_UI_PASSWORD` is not set (or shorter than 12 characters: the deploy log says so) |
+| Everyone is locked out of sign-in after a few wrong attempts | the proxy's address is not in `FOLIO_TRUSTED_PROXIES` (see step 3) |
 | The UI signs everyone out after a deploy | expected: sessions live in memory |
 | Long renders cut off during deploys | raise `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` to at least `FOLIO_RENDER_TIMEOUT` + 20 s |
