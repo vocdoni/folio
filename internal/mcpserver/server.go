@@ -22,6 +22,7 @@ func New(d *Deps) *mcp.Server {
 	})
 	registerCatalogTools(s, d)
 	registerAssetTools(s, d)
+	registerDocumentTools(s, d)
 	return s
 }
 
