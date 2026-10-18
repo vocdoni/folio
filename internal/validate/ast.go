@@ -83,10 +83,7 @@ func CheckAST(doc *pandocast.Document, t model.Template, l Limits, assetOK func(
 			if !ok {
 				continue
 			}
-			use := components.Use{Name: name, Attrs: map[string]string{}, Index: idx}
-			for _, kv := range x.Attr.KeyVals {
-				use.Attrs[kv[0]] = kv[1]
-			}
+			use := components.Use{Name: name, Index: idx}
 			path := "/markdown"
 			switch {
 			case !components.Known(name):
@@ -98,6 +95,14 @@ func CheckAST(doc *pandocast.Document, t model.Template, l Limits, assetOK func(
 			case len(x.Blocks) != 0:
 				add(errf(model.CodeComponentNotEmpty, path, "write ::: folio-"+name+" and ::: on consecutive lines; the content comes from data."+name, "component div folio-%s must be empty", name))
 				continue
+			}
+			if len(x.Attr.KeyVals) > 0 {
+				var attrs []string
+				for _, kv := range x.Attr.KeyVals {
+					attrs = append(attrs, kv[0]+"="+kv[1])
+				}
+				add(errf(model.CodeComponentAttribute, path, "remove the attribute; milestone payments are now `payment` strings in data.milestones",
+					"component div folio-%s must not have attributes (found %s)", name, snippet(strings.Join(attrs, " "))))
 			}
 			if want, ok := componentOf[name]; ok {
 				if current != want {

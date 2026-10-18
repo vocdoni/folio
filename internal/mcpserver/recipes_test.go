@@ -13,7 +13,7 @@ func TestRecipesGuideCoversTheJobs(t *testing.T) {
 		"## Proposal", "## Quote", "## Statement of work", "## Revise a colleague's document", "## Create a brand and a template",
 		"`list_templates", "`get_template", "`validate_document`", "`render_document`", "`get_document", "`publish_document",
 		"`upload_asset`", "`create_brand`", "`create_template`", "`preview_template", "`update_template", "expected_revision",
-		"idempotency_key", "computed.budget.total",
+		"idempotency_key", "data.budget.totals", "send every value exactly as it should appear",
 	})
 	md := guide(t, "recipes")
 	blocks := strings.Split(md, "```json\n")

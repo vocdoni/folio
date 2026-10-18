@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,11 +27,14 @@ type fakeRenderer struct {
 func (f *fakeRenderer) Render(_ context.Context, req render.Request) (*render.Result, error) {
 	f.calls.Add(1)
 	time.Sleep(f.delay)
+	if req.Input.Markdown == "invalid" {
+		return nil, &model.Error{Code: model.ErrValidationFailed, Message: "1 problem(s) must be fixed before rendering"}
+	}
 	canon, sum, err := render.CanonicalInput(model.Ref{ID: req.Template.ID, Version: req.TemplateVersion}, model.Ref{ID: req.Brand.ID, Version: req.BrandVersion}, req.Input)
 	if err != nil {
 		return nil, err
 	}
-	return &render.Result{Canonical: canon, InputSHA256: sum, Computed: json.RawMessage(`{}`),
+	return &render.Result{Canonical: canon, InputSHA256: sum,
 		PDF: []byte("%PDF-" + sum), DOCX: []byte("PK-" + sum), Pages: [][]byte{[]byte("png-" + sum)}}, nil
 }
 
@@ -284,5 +288,56 @@ func TestListNewestFirstWithCursor(t *testing.T) {
 	_ = s.Trash(ctx, "alice", ids[0], false)
 	if got, _, _ := s.List(ctx, ListFilter{}); len(got) != 4 {
 		t.Fatalf("trashed listed by default: %d", len(got))
+	}
+}
+
+// Folio derives no values from the input: a new revision stores the column
+// default '{}' in revisions.computed and Get exposes no computed field.
+func TestRevisionsCarryNoComputedValues(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	r, err := s.Render(ctx, "alice", RenderRequest{TemplateID: "proposal", Input: in("v1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored string
+	if err := s.DB.R.QueryRowContext(ctx, `SELECT computed FROM revisions WHERE document_id = ? AND revision = 1`, r.DocumentID).Scan(&stored); err != nil || stored != "{}" {
+		t.Fatalf("revisions.computed = %q %v", stored, err)
+	}
+	d, err := s.Get(ctx, r.DocumentID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []any{r, d} {
+		raw, _ := json.Marshal(v)
+		if strings.Contains(string(raw), `"computed"`) {
+			t.Fatalf("output carries computed: %s", raw)
+		}
+	}
+}
+
+// A render pinned to an older template version that fails validation names
+// the current version (starter templates are upgraded in place).
+func TestPinnedOldVersionNamesTheLatest(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	cat := s.Resolver.(*catalog.Service)
+	tp, _, err := cat.ResolveTemplate(ctx, "proposal", 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp.Name = "P v2"
+	if _, err := cat.UpdateTemplate(ctx, "folio", "proposal", 1, tp, "starter upgrade"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Render(ctx, "alice", RenderRequest{TemplateID: "proposal", TemplateVersion: 1, Input: in("invalid")})
+	var me *model.Error
+	if !errors.As(err, &me) || me.Code != model.ErrValidationFailed ||
+		!strings.Contains(me.Message, "template proposal version 1 is not the latest: version 2 is current") {
+		t.Fatalf("pinned v1: %v", err)
+	}
+	_, err = s.Render(ctx, "alice", RenderRequest{TemplateID: "proposal", Input: in("invalid")})
+	if !errors.As(err, &me) || strings.Contains(me.Message, "not the latest") {
+		t.Fatalf("latest: %v", err)
 	}
 }

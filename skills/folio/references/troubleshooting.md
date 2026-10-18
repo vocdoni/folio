@@ -41,15 +41,13 @@ template is strict.
 
 ## Finding codes
 
-### Metadata, data and money
+### Metadata and data
 
 | code | meaning | fix |
 |---|---|---|
-| `schema_violation` | a value does not match the metadata, data, component or spec schema; `path` points at it (also used for invalid brand and template fields) | correct the value; `get_template` shows the schemas, `get_capabilities` the component schemas |
+| `schema_violation` | a value does not match the metadata, data, component or spec schema; `path` points at it (also used for invalid brand and template fields). A JSON number where a component expects text carries the hint `send figures as strings exactly as they should appear` | correct the value; `get_template` shows the schemas, `get_capabilities` the component schemas; send figures as strings such as `"€1,250.00"` |
 | `invalid_format` | a value has the right type but the wrong format | follow the format in the message |
-| `money_invalid` | an amount, quantity or percentage is not a valid decimal, has too many decimals or integer digits, is negative or over 100; or an unknown currency; or `show_payments` without a budget | send decimal strings such as `"1250.00"`, within the limits in `get_guide('components')` |
-| `expected_total_mismatch` | `budget.expected_total` differs from Folio's total | remove `expected_total` or fix the line items; never adjust totals by hand |
-| `payment_pct_sum` | milestone `payment_pct` values do not add up to 100, or `show_payments=true` with none | make the percentages add up to exactly 100 |
+| `unknown_deliverable` | a milestone lists a deliverable id that is not in `data.deliverables` (checked when the document uses `::: folio-deliverables`) | use an id from `data.deliverables`, or add the deliverable |
 
 ### Markdown and structure
 
@@ -63,6 +61,7 @@ template is strict.
 | `unknown_component` | a `folio-*` div names no known component | use `budget`, `milestones`, `deliverables`, `signatures` or `info` |
 | `component_not_allowed` | the template does not enable that component | remove it or use a template that lists it |
 | `component_not_empty` | a component div has content | leave it empty; the content comes from `data.<name>` |
+| `component_attribute` | a component div has a `key=value` attribute, e.g. `::: {.folio-milestones key=value}` | remove the attribute: write `::: folio-<name>`; milestone payments are `payment` strings in `data.milestones` |
 | `misplaced_component` | a component is nested in another block, or outside the section that declares it | make it a top-level block under the right heading |
 | `component_missing` (warning) | a section that declares a component has no component div | add the `::: folio-<name>` block under that heading |
 | `invalid_image_target` | an image does not point at `asset:<asset_id>` | upload it with `upload_asset` and use `![caption](asset:<id>)` |
@@ -89,9 +88,14 @@ except `placeholder`, so fix layouts until the sample renders cleanly.
 
 ## Common situations
 
-- **A total looks wrong.** Folio's totals follow the documented rounding
-  (per line, then per tax group). Check quantities, discounts and tax rates
-  in `computed.budget.lines`; do not override totals.
+- **A total looks wrong.** Folio prints figures exactly as you send them and
+  never checks or recomputes them. Fix the amount in `data.budget.totals` (or
+  in the line) and render a new revision.
+- **An old document or template version fails with `validation_failed`.**
+  Its `data` uses the retired budget shape (a currency code, tax rates and
+  payment percentages for Folio to compute). Rewrite `data.budget` as `items`
+  with `amount` strings plus `totals` rows, and milestone payments as
+  `payment` strings, then render again with the latest template version.
 - **`conflict` on render_document.** Someone added a revision. Call
   `get_document(id, include_source=true)`, merge your change into the new
   source, and render with the new `expected_revision`.

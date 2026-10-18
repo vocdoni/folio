@@ -38,7 +38,6 @@ type Request struct {
 type Result struct {
 	Canonical   []byte // canonical input JSON (stored as the revision's input blob)
 	InputSHA256 string
-	Computed    json.RawMessage
 	Warnings    []model.Finding
 	PDF         []byte // nil when pdf was not requested or ValidateOnly
 	DOCX        []byte
@@ -56,7 +55,8 @@ type PipelineConfig struct {
 	MaxPages int
 }
 
-// Pipeline is validate → compute → expand → pandoc → typst → checks.
+// Pipeline is validate → expand → pandoc → typst → checks. Component values
+// are rendered verbatim: nothing is derived from them.
 type Pipeline struct {
 	cfg      PipelineConfig
 	refMu    sync.Mutex
@@ -188,7 +188,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	date, _ := meta["date"].(string)
 	day, _ := time.Parse("2006-01-02", date) // validated above
 	epoch := day.Unix()
-	labels, numberLang := brandkit.ResolveLabels(lang, t.Labels)
+	labels := brandkit.ResolveLabels(lang, t.Labels)
 
 	reportProgress(ctx, StepQueue)
 	release, err := p.cfg.Queue.Acquire(ctx)
@@ -223,9 +223,8 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	ast := validate.CheckAST(doc, t, p.cfg.Limits, assetOK)
 	findings = append(findings, ast.Findings...)
 	findings = append(findings, schemas.ValidateData(data, ast.Uses)...)
-	cctx := components.Context{Lang: numberLang, Labels: labels, Metadata: meta}
-	computed, cf := components.Compute(data, ast.Uses, cctx)
-	findings = append(findings, cf...)
+	findings = append(findings, components.Check(data, ast.Uses)...)
+	cctx := components.Context{Labels: labels, Metadata: meta}
 	if t.Layout.Typst != nil {
 		allow, err := bundled.VendoredPackages(p.cfg.Engine.PackagesDir())
 		if err != nil {
@@ -236,11 +235,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	if model.HasErrors(findings) {
 		return nil, failed(findings)
 	}
-	computedJSON, err := model.Canonical(computed)
-	if err != nil {
-		return nil, err
-	}
-	res := &Result{Canonical: canonical, InputSHA256: sum, Computed: computedJSON}
+	res := &Result{Canonical: canonical, InputSHA256: sum}
 	if req.ValidateOnly {
 		res.Warnings, res.Duration = findings, time.Since(start)
 		return res, nil
@@ -258,7 +253,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 			blocks = append(blocks, b)
 			continue
 		}
-		exp, err := components.Expand(u, data, computed, cctx)
+		exp, err := components.Expand(u, data, cctx)
 		if err != nil {
 			return nil, &model.Error{Code: model.ErrInternal, Message: "component expansion failed", Err: err}
 		}

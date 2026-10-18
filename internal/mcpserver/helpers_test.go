@@ -83,7 +83,7 @@ func (f *fakeRenderer) Render(ctx context.Context, req render.Request) (*render.
 	if err != nil {
 		return nil, err
 	}
-	res := &render.Result{Canonical: canon, InputSHA256: sum, Computed: json.RawMessage(`{"budget":{"total":"121.00"}}`), Warnings: []model.Finding{}}
+	res := &render.Result{Canonical: canon, InputSHA256: sum, Warnings: []model.Finding{}}
 	if strings.Contains(req.Input.Markdown, "TODO") {
 		res.Warnings = append(res.Warnings, model.Finding{Code: model.CodePlaceholder, Severity: model.SeverityWarning, Path: "/markdown", Message: `placeholder "TODO"`})
 	}

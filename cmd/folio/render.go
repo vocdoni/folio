@@ -211,7 +211,7 @@ func writeOutputs(dir string, res *render.Result) error {
 		}
 	}
 	summary, _ := json.MarshalIndent(map[string]any{
-		"input_sha256": res.InputSHA256, "pages": res.PageCount, "computed": res.Computed, "warnings": res.Warnings,
+		"input_sha256": res.InputSHA256, "pages": res.PageCount, "warnings": res.Warnings,
 	}, "", "  ")
 	return write("result.json", append(summary, '\n'))
 }

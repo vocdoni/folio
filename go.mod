@@ -3,7 +3,6 @@ module github.com/vocdoni/folio
 go 1.27
 
 require (
-	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/landlock-lsm/go-landlock v0.10.1

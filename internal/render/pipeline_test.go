@@ -3,7 +3,6 @@
 package render
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -62,7 +61,8 @@ func input() model.DocumentInput {
 	return model.DocumentInput{
 		Markdown: "# Executive summary\n\nWe propose *things* with $E = m c^2$.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
 		Metadata: json.RawMessage(`{"title":"Website redesign","date":"2026-10-18","language":"es","client":"ACME"}`),
-		Data:     json.RawMessage(`{"budget":{"currency":"EUR","tax_rate":21,"items":[{"description":"Design","quantity":2,"unit_price":"1500"}]}}`),
+		Data: json.RawMessage(`{"budget":{"items":[{"description":"Design","quantity":"2","unit_price":"1.500,00 €","amount":"3.000,00 €"}],` +
+			`"totals":[{"label":"IVA (21 %)","amount":"630,00 €"},{"label":"Total","amount":"3.630,00 €","emphasis":true}]}}`),
 	}
 }
 
@@ -84,8 +84,8 @@ func TestPipelineDeterministicRender(t *testing.T) {
 	if sha256.Sum256(r1.PDF) != sha256.Sum256(r2.PDF) || sha256.Sum256(r1.DOCX) != sha256.Sum256(r2.DOCX) {
 		t.Fatal("renders are not byte-identical")
 	}
-	if !bytes.Contains(r1.Computed, []byte(`"total":"3630.00"`)) || r1.PageCount < 3 {
-		t.Fatalf("computed=%s pages=%d warnings=%+v", r1.Computed, r1.PageCount, r1.Warnings)
+	if r1.PageCount < 3 {
+		t.Fatalf("pages=%d warnings=%+v", r1.PageCount, r1.Warnings)
 	}
 	for _, w := range r1.Warnings {
 		t.Logf("warning: %+v", w)

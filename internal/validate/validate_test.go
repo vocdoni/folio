@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vocdoni/folio/internal/components"
 	"github.com/vocdoni/folio/internal/model"
 	"github.com/vocdoni/folio/internal/pandocast"
 )
@@ -259,5 +260,72 @@ func TestSecuritySchemaRefsCannotEscape(t *testing.T) {
 	tp.DataSchema = json.RawMessage(`{"type":"object","properties":{"budget":{"$ref":"folio:component/budget"}}}`)
 	if _, fs := CompileSchemas(tp); len(fs) != 0 {
 		t.Errorf("folio:component ref failed: %+v", fs)
+	}
+}
+
+// Component divs take no attributes: a stale `show_payments=true` (or any
+// other key=value) is an error that names the new data field.
+func TestValidationComponentAttributes(t *testing.T) {
+	div := comp("budget").(*pandocast.Div)
+	div.Attr.KeyVals = [][2]string{{"show_payments", "true"}}
+	doc := &pandocast.Document{Blocks: []pandocast.Block{header("Executive summary"), para("ok"), header("Budget"), div}}
+	r := CheckAST(doc, tmpl(), limits, nil)
+	if len(r.Findings) != 1 || r.Findings[0].Code != model.CodeComponentAttribute || r.Findings[0].Severity != model.SeverityError ||
+		r.Findings[0].Hint != "remove the attribute; milestone payments are now `payment` strings in data.milestones" ||
+		!strings.Contains(r.Findings[0].Message, "show_payments=true") {
+		t.Fatalf("findings = %+v", r.Findings)
+	}
+}
+
+// A JSON number where a component expects a string fails with the figure hint,
+// once, even when the template data_schema references the component schema.
+func TestValidationNumbersInFiguresGetTheHint(t *testing.T) {
+	tp := tmpl()
+	tp.DataSchema = json.RawMessage(`{"type":"object","properties":{"budget":{"$ref":"folio:component/budget"}}}`)
+	s, fs := CompileSchemas(tp)
+	if len(fs) != 0 {
+		t.Fatal(fs)
+	}
+	data, _ := model.DecodeJSON([]byte(`{"budget": {"items": [{"description": "Design", "quantity": 2, "amount": "€1,234.50"}],
+	  "totals": [{"label": "Total", "amount": 1234.5}]}}`))
+	got := s.ValidateData(data.(map[string]any), []components.Use{{Name: "budget"}})
+	want := map[string]bool{"/data/budget/items/0/quantity": false, "/data/budget/totals/0/amount": false}
+	for _, f := range got {
+		if _, ok := want[f.Path]; !ok || f.Code != model.CodeSchemaViolation || f.Hint != FigureHint || want[f.Path] {
+			t.Fatalf("unexpected or repeated finding %+v in %+v", f, got)
+		}
+		want[f.Path] = true
+	}
+	for p, seen := range want {
+		if !seen {
+			t.Errorf("no finding at %s: %+v", p, got)
+		}
+	}
+	if FigureHint != `send figures as strings exactly as they should appear (e.g. "€1,234.50")` {
+		t.Fatalf("hint = %q", FigureHint)
+	}
+	meta, _ := model.DecodeJSON([]byte(`{"title": 5, "date": "2026-10-18", "language": "en"}`))
+	if mf := s.ValidateMetadata(meta); len(mf) != 1 || mf[0].Hint != "" {
+		t.Fatalf("metadata findings carry no figure hint: %+v", mf)
+	}
+}
+
+// A white-space-only figure or label satisfies minLength but not the schema.
+func TestValidationBlankFigureRejected(t *testing.T) {
+	tp := tmpl()
+	tp.DataSchema = json.RawMessage(`{"type":"object","properties":{"budget":{"$ref":"folio:component/budget"}}}`)
+	s, fs := CompileSchemas(tp)
+	if len(fs) != 0 {
+		t.Fatal(fs)
+	}
+	data, _ := model.DecodeJSON([]byte(`{"budget": {"items": [{"description": "Design", "amount": " "}],
+	  "totals": [{"label": "  ", "amount": "10"}]}}`))
+	got := s.ValidateData(data.(map[string]any), []components.Use{{Name: "budget"}})
+	paths := map[string]bool{}
+	for _, f := range got {
+		paths[f.Path] = true
+	}
+	if !paths["/data/budget/items/0/amount"] || !paths["/data/budget/totals/0/label"] {
+		t.Fatalf("blank figure/label accepted: %+v", got)
 	}
 }

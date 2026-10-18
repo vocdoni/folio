@@ -2,16 +2,15 @@
 
 Folio is a self-hosted document service for AI agents. An agent sends
 Markdown, metadata and typed data over [MCP](https://modelcontextprotocol.io);
-Folio validates it, computes every money value with exact decimals, and
-renders a branded PDF and an editable DOCX from shared, versioned templates
-and brands. It returns download links, page previews and structured,
-actionable errors.
+Folio checks its structure and renders a branded PDF and an editable DOCX
+from shared, versioned templates and brands. It returns download links, page
+previews and structured, actionable errors.
 
 - **One tool call per document**: `render_document` returns PDF and DOCX
-  links, computed totals and warnings.
-- **Exact money**: budgets, discounts, taxes per rate and payment schedules
-  are computed by Folio (half-up rounding to the currency's minor unit),
-  never by the agent.
+  links, page previews and warnings.
+- **Your content, verbatim**: Folio never changes your content or figures.
+  Budgets, total rows and payment terms are laid out exactly as the agent
+  sends them; Folio does not calculate, round or reformat anything.
 - **Shared templates and brands**: created, versioned, previewed and
   archived through MCP; five starter templates (proposal, quote,
   requirements, technical report, statement of work) and a starter brand.
@@ -37,6 +36,7 @@ Folio is licensed under the GNU Affero General Public License v3.0 only
 - [Configuration](#configuration)
 - [Connecting agents](#connecting-agents)
 - [Worked examples](#worked-examples)
+- [Upgrading from the money-computing contract](#upgrading-from-the-money-computing-contract)
 - [Security model](#security-model)
 - [Backups and restore](#backups-and-restore)
 - [Development](#development)
@@ -51,7 +51,7 @@ Folio is licensed under the GNU Affero General Public License v3.0 only
  ┌──────────────────────── folio (single Go binary) ─────────────────────────┐
  │ /mcp ─► auth ─► MCP tools, resources, prompts, guides                      │
  │            catalog (brands, templates) · documents · assets · AI reviewer  │
- │            render: validate → compute → expand → pandoc → typst → checks   │
+ │            render: validate → expand → pandoc → typst → checks             │
  │            store: SQLite + content-addressed blobs in FOLIO_DATA_DIR       │
  │ /f/{file_id}/{name}  public downloads (unguessable links, no token)        │
  │ /healthz, /robots.txt                                                      │
@@ -150,7 +150,7 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_TOKEN` | — | single access token (recorded as actor `default`) |
 | `FOLIO_TOKENS` | — | comma-separated `name:token` pairs; names match `^[a-z0-9][a-z0-9-]{0,31}$` and are recorded as authors; every token (here and in `FOLIO_TOKEN`) is 32–256 characters of `[A-Za-z0-9._~+/=-]` |
 | `FOLIO_INSECURE_NO_AUTH` | `false` | serve `/mcp` without a token (local development only; logs a warning every minute) |
-| `FOLIO_SEED` | `true` | seed the starter brand and templates into an empty database |
+| `FOLIO_SEED` | `true` | seed the starter brand and templates into an empty database, and upgrade the starters Folio created when a new version ships them |
 | `FOLIO_RENDER_CONCURRENCY` | `2` | parallel render jobs; about (container memory − 1 GiB) / `FOLIO_RENDER_MEMORY` |
 | `FOLIO_RENDER_QUEUE` | `32` | waiting jobs before calls fail with `busy` |
 | `FOLIO_RENDER_TIMEOUT` | `60s` | wall-clock limit per pandoc or typst run |
@@ -283,10 +283,11 @@ retryable, details[]}`; each detail has a JSON pointer `path` and a `hint`.
 
 1. `list_templates` and `get_template` with `{"id": "proposal"}` show the
    template's sections, schemas, skeleton and a complete sample.
-2. Validate the document (a dry run that also returns the computed money
-   values):
+2. Validate the document (a dry run; nothing is stored). Folio never
+   changes your content or figures: send every value exactly as it should appear,
+   including the total rows and payments:
 
-<!-- folio-example tool=validate_document total=17736.52 payments=5320.96,7094.61,5320.95 -->
+<!-- folio-example tool=validate_document -->
 ```json
 {
   "template_id": "proposal",
@@ -295,20 +296,24 @@ retryable, details[]}`; each detail has a JSON pointer `path` and a `hint`.
     "client": "Northwind Traders", "project": "Shop redesign",
     "reference": "P-2026-07", "valid_until": "2026-11-30"
   },
-  "markdown": "# Executive summary\n\nNorthwind Traders wants a faster online shop. We propose a redesign delivered in three milestones.\n\n::: folio-info\n:::\n\n# Scope\n\n- Discovery workshop with the sales team\n- Design system and storefront templates\n- Migration of 300 product pages\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+  "markdown": "# Executive summary\n\nNorthwind Traders wants a faster online shop. We propose a redesign delivered in three milestones.\n\n::: folio-info\n:::\n\n# Scope\n\n- Discovery workshop with the sales team\n- Design system and storefront templates\n- Migration of 300 product pages\n\n# Plan\n\n::: folio-milestones\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
   "data": {
     "budget": {
-      "currency": "EUR", "tax_rate": "21",
       "items": [
-        {"description": "Discovery workshop", "quantity": "2", "unit": "day", "unit_price": "950"},
-        {"description": "Design and build", "quantity": "18", "unit": "day", "unit_price": "720", "discount_pct": "5"},
-        {"description": "Hosting (VAT exempt)", "quantity": "12", "unit": "month", "unit_price": "45", "tax_rate": "0"}
+        {"description": "Discovery workshop", "quantity": "2", "unit": "day", "unit_price": "€950.00", "amount": "€1,900.00"},
+        {"description": "Design and build", "quantity": "18", "unit": "day", "unit_price": "€720.00", "discount": "5%", "amount": "€12,312.00"},
+        {"description": "Hosting (VAT exempt)", "quantity": "12", "unit": "month", "unit_price": "€45.00", "amount": "€540.00"}
+      ],
+      "totals": [
+        {"label": "Subtotal", "amount": "€14,752.00"},
+        {"label": "VAT (21% on €14,212.00)", "amount": "€2,984.52"},
+        {"label": "Total", "amount": "€17,736.52", "emphasis": true}
       ]
     },
     "milestones": [
-      {"name": "Kick-off", "date": "2026-11-02", "deliverables": ["D1"], "payment_pct": "30"},
-      {"name": "Beta", "date": "2026-12-14", "deliverables": ["D2"], "payment_pct": "40"},
-      {"name": "Launch", "date": "2027-01-25", "deliverables": ["D3"], "payment_pct": "30"}
+      {"name": "Kick-off", "date": "2026-11-02", "deliverables": ["D1"], "payment": "30% · €5,320.96"},
+      {"name": "Beta", "date": "2026-12-14", "deliverables": ["D2"], "payment": "40% · €7,094.61"},
+      {"name": "Launch", "date": "2027-01-25", "deliverables": ["D3"], "payment": "30% · €5,320.95"}
     ],
     "deliverables": [
       {"id": "D1", "name": "Discovery report", "acceptance": "Approved by the sales lead"},
@@ -323,11 +328,11 @@ retryable, details[]}`; each detail has a JSON pointer `path` and a `hint`.
 }
 ```
 
-   The result is `{"valid": true, "findings": [], "computed": {...}}`.
-   `computed.budget` has `subtotal` 14752.00, two tax groups (0 % on 540.00
-   and 21 % on 14212.00 = 2984.52) and `total` 17736.52; `computed.milestones` has the
-   payments 5320.96, 7094.61 and 5320.95 (the last payment absorbs the
-   rounding remainder).
+   The result is `{"valid": true, "findings": [], "template": {...}, "brand": {...}}`.
+   Folio checked sections, components, schemas and that every milestone's
+   deliverable ids exist; it did not check the arithmetic. A JSON number in a
+   figure field fails with `schema_violation` and the hint "send figures as
+   strings exactly as they should appear".
 
 3. Render it with the same arguments plus an `idempotency_key`, so a retry
    after a dropped connection returns the same document:
@@ -353,7 +358,6 @@ retryable, details[]}`; each detail has a JSON pointer `path` and a `hint`.
     {"kind": "docx", "name": "online-shop-redesign.docx", "url": "https://folio.example.com/f/8c41…/online-shop-redesign.docx", "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 22778, "sha256": "…"}
   ],
   "previews": ["https://folio.example.com/f/a7d0…/online-shop-redesign-page-1.png", "…page-2.png", "…page-3.png"],
-  "computed": {"budget": {"total": "17736.52", "…": "…"}, "milestones": {"…": "…"}},
   "warnings": []
 }
 ```
@@ -421,8 +425,9 @@ placeholder:
     "sample": {
       "markdown": "# Summary\n\nWe will deliver the work described below.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
       "metadata": {"title": "Sample quote", "date": "2026-10-18", "language": "en", "client": "Example client"},
-      "data": {"budget": {"currency": "EUR", "tax_rate": "21",
-                          "items": [{"description": "Design", "quantity": "2", "unit_price": "1500"}]}}
+      "data": {"budget": {"items": [{"description": "Design", "quantity": "2", "unit": "day", "unit_price": "€1,500.00", "amount": "€3,000.00"}],
+                          "totals": [{"label": "VAT (21%)", "amount": "€630.00"},
+                                     {"label": "Total", "amount": "€3,630.00", "emphasis": true}]}}
     }
   },
   "note": "first version"
@@ -450,8 +455,9 @@ Render a first quote with the new template:
   "idempotency_key": "quote-001",
   "metadata": {"title": "Website maintenance", "date": "2026-10-18", "language": "en", "client": "Globex"},
   "markdown": "# Summary\n\nMonthly maintenance of the Globex website.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
-  "data": {"budget": {"currency": "EUR", "tax_rate": "21",
-                      "items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "300"}]}}
+  "data": {"budget": {"items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "€300.00", "amount": "€3,600.00"}],
+                      "totals": [{"label": "VAT (21%)", "amount": "€756.00"},
+                                 {"label": "Total", "amount": "€4,356.00", "emphasis": true}]}}
 }
 ```
 
@@ -473,8 +479,11 @@ call fails with `conflict`:
   "expected_revision": 1,
   "metadata": {"title": "Website maintenance", "date": "2026-10-18", "language": "en", "client": "Globex"},
   "markdown": "# Summary\n\nMonthly maintenance of the Globex website, including security updates.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
-  "data": {"budget": {"currency": "EUR", "tax_rate": "21", "discount_pct": "10",
-                      "items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "300"}]}}
+  "data": {"budget": {"items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "€300.00", "amount": "€3,600.00"}],
+                      "totals": [{"label": "Subtotal", "amount": "€3,600.00"},
+                                 {"label": "Discount (10%)", "amount": "−€360.00"},
+                                 {"label": "VAT (21%)", "amount": "€680.40"},
+                                 {"label": "Total", "amount": "€3,920.40", "emphasis": true}]}}
 }
 ```
 
@@ -490,18 +499,54 @@ Mark revision 2 as final:
 `"purge": true` deletes it for good (published documents also need
 `"confirm_published": true`).
 
-### Components and money
+### Components and figures
 
 Components are empty fenced divs that Folio fills from `data`:
-`::: folio-budget`, `::: {.folio-milestones show_payments=true}`,
-`::: folio-deliverables`, `::: folio-signatures` and `::: folio-info`.
-Write amounts as strings (`"1500.00"`). Each line's net is
-quantity × unit price less its discount; a document `discount_pct` applies
-to every line; tax is computed per rate group; everything is rounded half-up
-to the currency's minor unit. Pass `expected_total` in `data.budget` to make
-validation fail if Folio's total differs from the one you expect. The
-`components` guide (`get_guide` with `{"topic": "components"}`) has every
-field.
+`::: folio-budget`, `::: folio-milestones`, `::: folio-deliverables`,
+`::: folio-signatures` and `::: folio-info`. They take no attributes.
+Every displayed value is a JSON string printed exactly as sent
+(`"€1,500.00"`, `"1.500,00 €"`, `"TBD"`): a budget is its `items` (each with
+an `amount`) plus the `totals` rows you write yourself, and a milestone's
+`payment` is plain text. Folio never calculates or checks the figures, so do
+the arithmetic before rendering. The `components` guide (`get_guide` with
+`{"topic": "components"}`) has every field.
+
+## Upgrading from the money-computing contract
+
+Earlier development builds computed budget totals, taxes and payment
+schedules. Folio now lays out exactly what you send:
+
+| before | now |
+|---|---|
+| `currency`, `tax_rate`, `discount_pct`, `expected_total` in `data.budget` | removed: write the figures in the style you want |
+| line `quantity`, `unit_price` (strings or numbers) | strings as they should appear (`"12"`, `"€650.00"`); both optional |
+| line `tax_rate`, `discount_pct` | `discount` text when you want a Discount column (`"10%"`) |
+| the line amount Folio computed | `amount` per line (required) |
+| subtotal, discount, tax and total rows Folio computed | `totals`: `[{"label", "amount", "emphasis"}]` rows, in order |
+| milestone `payment_pct` with `::: {.folio-milestones show_payments=true}` | milestone `payment` text (`"30% · €4,500.00"`) and `::: folio-milestones` |
+| `computed` in `validate_document`, `render_document`, `get_document` | removed |
+
+- **Starter templates upgrade themselves.** On start, Folio compares the
+  starter brand and templates with the ones it ships (the database records
+  `seed_version`). A starter whose latest version Folio created gets a new
+  version (note "starter upgrade (seed v2)"); one whose latest version a
+  user created is left alone and named in a startup warning
+  (`starter upgrade skipped`) so you can compare it by hand.
+  `FOLIO_SEED=false` turns seeding and these upgrades off.
+- **Existing documents keep their files and revisions.** Their stored input
+  uses the old data shape, so revising one (`render_document` with
+  `document_id`) fails with `validation_failed` until you rewrite
+  `data.budget` and `data.milestones` as in the table above.
+- **Pinned versions.** `render_document` with `template_version: 1` of an
+  upgraded starter fails the same way, and its error message names the current
+  version; `validate_document` returns `valid: false` and says so in its text
+  summary. Omit `template_version` to use the current version.
+- Your own templates keep working when their `data_schema` references
+  `folio:component/budget` or `folio:component/milestones` (the reference
+  now resolves to the new schema), but their `sample` and the documents
+  rendered with them need the new data shape; update the template with
+  `update_template`. Template `labels` for `budget.subtotal`, `budget.tax`
+  and `budget.total` are still accepted and ignored.
 
 ## Security model
 

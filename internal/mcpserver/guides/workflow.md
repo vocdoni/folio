@@ -4,8 +4,10 @@ Which Folio tools to call, in which order, for every common task.
 
 Folio turns Markdown, metadata and typed data into a branded PDF and an
 editable DOCX. Templates and brands are shared by everyone on the instance.
-Folio computes every money value (subtotals, discounts, taxes, totals,
-payment amounts): never compute or type them yourself.
+Folio never changes your content or figures:
+send every value exactly as it should appear.
+Figures, total rows and payment terms are printed as you send them; Folio
+does not calculate, round or check them, so get them right before rendering.
 
 ## Write a new document
 
@@ -25,8 +27,9 @@ payment amounts): never compute or type them yourself.
    reference it as `![Caption](asset:<asset_id>)`. Reuse ids from
    `list_assets` instead of uploading twice.
 4. Write the Markdown (see `get_guide('markdown')`), the metadata and the
-   data. Put prices, quantities and percentages in `data` as strings (for
-   example `"1500.00"`); never write totals into the text.
+   data. Put every displayed figure in `data` as a string written the way it
+   should appear (for example `"€1,500.00"`, `"1.500,00 €"`), including the
+   budget's total rows in `data.budget.totals`; JSON numbers are rejected.
 5. `validate_document` with the same arguments you will render. Fix every
    finding with `severity: error` (each has a JSON pointer `path` and a
    `hint`), then validate again. Warnings such as `placeholder` do not block
@@ -35,11 +38,10 @@ payment amounts): never compute or type them yourself.
 6. `render_document`. Always pass an `idempotency_key` (for example a short
    slug plus date) so a retry after a timeout or a dropped connection returns
    the same document instead of creating a duplicate. The result has
-   `document_id`, `revision`, download links in `files`, preview links,
-   `computed` totals and `warnings`, plus the first page as an image
-   (`include_previews`: `none`, `first`, `all`).
+   `document_id`, `revision`, download links in `files`, preview links and
+   `warnings`, plus the first page as an image (`include_previews`: `none`,
+   `first`, `all`).
 7. Look at the warnings and the preview, then share the PDF and DOCX links.
-   Quote totals from `computed`, never from your own arithmetic.
 
 ## Revise a document (yours or a colleague's)
 

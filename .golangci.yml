@@ -24,9 +24,9 @@ linters:
       analyze-types: true
       forbid:
         - pattern: '^(float32|float64)$'
-          msg: "no floating point in internal/money: use apd decimals"
-        - pattern: '^strconv\.ParseFloat$'
-          msg: "no floating point in internal/money"
+          msg: "internal/components renders figures verbatim: no numbers"
+        - pattern: '^strconv\.(ParseFloat|ParseInt|ParseUint|Atoi)$'
+          msg: "internal/components renders figures verbatim: no numeric parsing"
     gosec:
       excludes:
         - G104 # duplicated by errcheck
@@ -43,7 +43,7 @@ linters:
         - projecte
   exclusions:
     rules:
-      - path-except: '^internal/money/'
+      - path-except: '^internal/components/'
         linters: [forbidigo]
       - path: '_test\.go$'
         linters: [gosec, noctx, errcheck]

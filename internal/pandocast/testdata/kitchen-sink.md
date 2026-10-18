@@ -42,7 +42,7 @@ func main() {}
 
 : Table caption
 
-::: {.folio-milestones show_payments=true}
+::: {.folio-milestones key=value}
 :::
 
 ::: note

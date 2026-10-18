@@ -48,8 +48,9 @@ See the README "Development" section for every make target.
 
 - Idiomatic Go, `CGO_ENABLED=0`, `log/slog`, `context` on every blocking
   call, errors wrapped with `%w`, no panics on external input.
-- No floating point for money (`internal/money` uses exact decimals; the
-  linter enforces it).
+- Folio never changes content or figures: component values are rendered
+  verbatim, with no numeric parsing in `internal/components` (a test and the
+  linter enforce it).
 - Never log tokens, document content or download links.
 - Every external process runs through `folio sandbox-exec` with a timeout.
 - Every Go file starts with `// SPDX-License-Identifier: AGPL-3.0-only`;

@@ -19,12 +19,16 @@ Planned as 0.1.0, the first release.
   templates, brands, assets and documents, guides, resources and prompts.
 - Rendering of branded PDF (typst) and editable DOCX (pandoc) from Markdown,
   metadata and typed data, with PNG previews and post-render checks.
-- Components with exact decimal money: budget, milestones with payment
-  schedules, deliverables, signatures and document info.
+- Components that lay out content verbatim: budget (line items and the
+  caller's total rows), milestones (with payment text), deliverables,
+  signatures and document info. Folio never calculates, rounds or reformats
+  figures; component values are strings, and JSON numbers are rejected.
 - Versioned templates and brands, document revisions, publish, trash,
   restore and purge, idempotent renders.
 - Starter brand and five starter templates (proposal, requirements, quote,
-  technical report, statement of work).
+  technical report, statement of work), versioned: a new release upgrades
+  the starters Folio created and leaves user-edited ones alone with a startup
+  warning.
 - Sandboxed pandoc and typst (rlimits, timeouts, no network, Landlock when
   available).
 - Public capability download links, `/healthz`, retention, blob garbage
