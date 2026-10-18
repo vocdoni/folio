@@ -98,6 +98,8 @@ func expandMilestones(raw any, p *Payments, ctx Context) ([]pandocast.Block, err
 		}
 		body = append(body, row(cells...))
 	}
+	// Name and When always stay; empty Description/Deliverables/Payment go.
+	aligns, head, body = dropEmptyColumns(aligns, head, body, 0, 1)
 	return []pandocast.Block{table("milestones", aligns, head, body, nil)}, nil
 }
 
@@ -119,6 +121,8 @@ func expandDeliverables(raw any, ctx Context) ([]pandocast.Block, error) {
 		}
 		body = append(body, row(cells...))
 	}
+	// ID and Name always stay.
+	aligns, head, body = dropEmptyColumns(aligns, head, body, 0, 1)
 	return []pandocast.Block{table("deliverables", aligns, head, body, nil)}, nil
 }
 

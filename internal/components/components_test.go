@@ -47,6 +47,55 @@ func TestBudgetComputeStringsAndNumbersAgree(t *testing.T) {
 	}
 }
 
+func TestEmptyColumnsOmitted(t *testing.T) {
+	data := decode(t, `{"milestones": [{"name": "A", "date": "2026-01-01"}, {"name": "B", "duration": "2w"}],
+	 "deliverables": [{"id": "D1", "name": "Spec"}, {"id": "D2", "name": "Code", "due": "May"}]}`)
+	ctx := Context{Lang: "en", Labels: labelsEN}
+	blocks, err := Expand(Use{Name: "milestones"}, data, Computed{}, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := blocks[0].(*pandocast.Table)
+	if len(m.ColSpecs) != 2 || len(m.Head.Rows[0].Cells) != 2 || len(m.Bodies[0].Body[0].Cells) != 2 {
+		t.Fatalf("milestones columns = %d", len(m.ColSpecs))
+	}
+	blocks, err = Expand(Use{Name: "deliverables"}, data, Computed{}, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := blocks[0].(*pandocast.Table) // id, name, due remain
+	if len(d.ColSpecs) != 3 || len(d.Head.Rows[0].Cells) != 3 || len(d.Bodies[0].Body[1].Cells) != 3 {
+		t.Fatalf("deliverables columns = %d", len(d.ColSpecs))
+	}
+}
+
+func TestInfoAndSignaturesHaveNoHeader(t *testing.T) {
+	ctx := Context{Lang: "en", Labels: labelsEN, Metadata: map[string]any{"client": "ACME", "date": "2026-01-01"}}
+	info, _ := Expand(Use{Name: "info"}, nil, Computed{}, ctx)
+	sigs, err := Expand(Use{Name: "signatures"}, decode(t, `{"signatures": [{"name": "Ann"}, {"name": "Bob"}]}`), Computed{}, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range append(info, sigs...) {
+		if tbl := b.(*pandocast.Table); len(tbl.Head.Rows) != 0 {
+			t.Fatalf("table %v has header rows", tbl.Attr)
+		}
+	}
+}
+
+func TestBudgetOmitsUnusedUnitAndDiscountColumns(t *testing.T) {
+	data := decode(t, `{"budget": {"currency": "EUR", "items": [{"description": "x", "quantity": 1, "unit_price": "10"}]}}`)
+	ctx := Context{Lang: "en", Labels: labelsEN}
+	c, _ := Compute(data, []Use{{Name: "budget"}}, ctx)
+	blocks, err := Expand(Use{Name: "budget"}, data, c, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(blocks[0].(*pandocast.Table).ColSpecs); n != 4 {
+		t.Fatalf("budget columns = %d, want 4", n)
+	}
+}
+
 func TestBudgetFindingsCarryPointers(t *testing.T) {
 	data := decode(t, `{"budget": {"currency": "EUR", "items": [{"description": "x", "quantity": "-1", "unit_price": "1.23456"}], "expected_total": "1"}}`)
 	_, fs := Compute(data, []Use{{Name: "budget"}}, Context{Lang: "en"})
