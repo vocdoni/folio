@@ -4,8 +4,8 @@
 //
 //	go generate ./internal/skill   (runs: go run ./gen -out ../../skills/folio)
 //
-// It replaces SKILL.md and references/*.md and removes reference files that
-// no longer have a guide.
+// It writes SKILL.md and removes the references/ directory of earlier
+// versions (the skill is one self-contained file).
 package main
 
 import (
@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/vocdoni/folio/internal/skill"
 )
@@ -36,20 +35,11 @@ func write(dir string) error {
 	if err != nil {
 		return err
 	}
-	refs := filepath.Join(dir, "references")
-	if err := os.MkdirAll(refs, 0o755); err != nil { //nolint:gosec // repository directories are world-readable
+	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // repository directories are world-readable
 		return err
 	}
-	old, err := os.ReadDir(refs)
-	if err != nil {
+	if err := os.RemoveAll(filepath.Join(dir, "references")); err != nil {
 		return err
-	}
-	for _, e := range old {
-		if _, keep := files["references/"+e.Name()]; !keep && strings.HasSuffix(e.Name(), ".md") {
-			if err := os.Remove(filepath.Join(refs, e.Name())); err != nil {
-				return err
-			}
-		}
 	}
 	for name, b := range files {
 		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), b, 0o644); err != nil {

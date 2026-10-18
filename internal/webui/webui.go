@@ -159,6 +159,7 @@ func (s *Server) routes() http.Handler {
 	s.api(mux, "POST /ui/api/login", route{public: true, action: "ui.login"}, s.handleLogin)
 	s.api(mux, "POST /ui/api/logout", route{action: "ui.logout"}, s.handleLogout)
 	s.overviewRoutes(mux)
+	s.connectionRoutes(mux)
 	s.documentRoutes(mux)
 	s.catalogRoutes(mux)
 	s.assetRoutes(mux)

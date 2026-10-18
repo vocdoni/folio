@@ -348,3 +348,10 @@ export interface JSONSchema {
   allOf?: JSONSchema[];
   [k: string]: unknown;
 }
+
+/** GET /connection: what an agent needs to connect (tokens empty when no token is needed). */
+export interface Connection {
+  mcp_url: string;
+  tokens: { name: string; token: string }[];
+  skill_url: string;
+}
