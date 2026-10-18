@@ -210,6 +210,10 @@ func TestStarterProposalDOCXFrontMatterAndTableWidths(t *testing.T) {
 	if n := strings.Count(body, "Table of Contents"); n != 1 {
 		t.Fatalf("%d tables of contents, want 1", n)
 	}
+	// The TOC is followed directly by a page break, so the body starts on a new page.
+	if !regexp.MustCompile(`</w:sdt>\s*<w:p><w:r><w:br w:type="page"\s*/></w:r></w:p>`).MatchString(body[toc:]) {
+		t.Fatal("no page break directly after the table of contents")
+	}
 	// Every table's grid: at least one multi-column table must have unequal widths,
 	// and no table with more than one column may use an equal default grid.
 	gridRE := regexp.MustCompile(`<w:tblGrid>(.*?)</w:tblGrid>`)

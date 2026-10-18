@@ -390,11 +390,20 @@ func cloneDoc(doc *pandocast.Document) (*pandocast.Document, error) {
 	return pandocast.Decode(raw)
 }
 
+// docxPageBreak is a constant OpenXML page break. Folio's only raw blocks are
+// constant OpenXML (this page break and the TOC field below), never user
+// text; user raw content is rejected by validation.
+const docxPageBreak = `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`
+
+// docxTOCField is the constant OpenXML table-of-contents field (headings 1-3);
+// Word fills it on a field update.
+const docxTOCField = `<w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent><w:p><w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/><w:instrText xml:space="preserve">TOC \o "1-3" \h \z \u</w:instrText><w:fldChar w:fldCharType="separate"/><w:fldChar w:fldCharType="end"/></w:r></w:p></w:sdtContent></w:sdt>`
+
 // docxFront builds the DOCX front matter: the cover (when enabled) and, after
-// its page break, the table of contents (when enabled). Pandoc's own --toc is
-// not used because it always lands before the first block, i.e. before the
-// cover. The TOC field is the second and last Folio-generated raw block; the
-// heading text goes through Str nodes, never into raw XML.
+// its page break, the table of contents followed by its own page break (when
+// enabled). Pandoc's own --toc is not used because it always lands before the
+// first block, i.e. before the cover. The TOC heading text goes through Str
+// nodes, never into raw XML.
 func docxFront(meta map[string]any, labels map[string]string, opts model.LayoutOptions) []pandocast.Block {
 	var out []pandocast.Block
 	if opts.Cover {
@@ -406,7 +415,8 @@ func docxFront(meta map[string]any, labels map[string]string, opts model.LayoutO
 			// styleId TOCHeading "TOC Heading" (the ID would add a duplicate style).
 			&pandocast.Div{Attr: pandocast.Attr{ID: "", Classes: []string{}, KeyVals: [][2]string{{"custom-style", "TOC Heading"}}},
 				Blocks: []pandocast.Block{&pandocast.Para{Inlines: pandocast.Text(labels["toc.title"])}}},
-			&pandocast.RawBlock{Format: "openxml", Text: `<w:sdt><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Table of Contents"/><w:docPartUnique/></w:docPartObj></w:sdtPr><w:sdtContent><w:p><w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/><w:instrText xml:space="preserve">TOC \o "1-3" \h \z \u</w:instrText><w:fldChar w:fldCharType="separate"/><w:fldChar w:fldCharType="end"/></w:r></w:p></w:sdtContent></w:sdt>`})
+			&pandocast.RawBlock{Format: "openxml", Text: docxTOCField},
+			&pandocast.RawBlock{Format: "openxml", Text: docxPageBreak})
 	}
 	return out
 }
@@ -484,9 +494,8 @@ func docxCover(meta map[string]any, labels map[string]string) []pandocast.Block 
 		out = append(out, styled("Author", v))
 	}
 	out = append(out, styled("Date", s("date")))
-	// Folio-generated raw OpenXML page break, one of the two constant raw blocks
-	// Folio emits (see docxFront); user raw content is rejected by validation.
-	out = append(out, &pandocast.RawBlock{Format: "openxml", Text: `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`})
+	// Constant raw OpenXML page break (see docxPageBreak).
+	out = append(out, &pandocast.RawBlock{Format: "openxml", Text: docxPageBreak})
 	return out
 }
 
