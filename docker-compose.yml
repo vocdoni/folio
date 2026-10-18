@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Local Folio with a named volume:
+#   cp .env.example .env    # then set FOLIO_TOKEN (openssl rand -hex 32)
+#   docker compose up -d
+#   curl http://localhost:8080/healthz
+#
+# FOLIO_IMAGE selects another image (for example a local `docker build -t folio .`).
+services:
+  folio:
+    image: ${FOLIO_IMAGE:-ghcr.io/vocdoni/folio:latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:${FOLIO_PORT:-8080}:8080"
+    volumes:
+      - folio-data:/data
+    # In-flight renders finish within FOLIO_RENDER_TIMEOUT + 20 s after SIGTERM.
+    stop_grace_period: 90s
+
+volumes:
+  folio-data:
