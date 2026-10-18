@@ -4,12 +4,14 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/assets"
+	"github.com/vocdoni/folio/internal/model"
 )
 
 type UploadAssetIn struct {
@@ -52,6 +54,12 @@ type IDIn struct {
 	ID string `json:"id"`
 }
 
+type UpdateAssetIn struct {
+	ID          string  `json:"id" jsonschema:"asset_id from upload_asset or list_assets"`
+	Name        *string `json:"name,omitempty" jsonschema:"new name, 1-200 characters; omit to keep the current one"`
+	Description *string `json:"description,omitempty" jsonschema:"new description (alt text), at most 500 characters; send an empty string to clear it; omit to keep the current one"`
+}
+
 type DeleteAssetOut struct {
 	AssetID string `json:"asset_id"`
 	Deleted bool   `json:"deleted"`
@@ -61,6 +69,8 @@ const (
 	descUploadAsset = `Upload an image for use in documents (![caption](asset:<asset_id>)) or as a brand logo. Send exactly one of content_base64 (standard base64) or url (public https only; private, loopback and cloud-metadata addresses are refused; at most 3 redirects, 20 s). Accepted: PNG, JPEG, WebP (stored as PNG) and SVG without scripts, event handlers, foreignObject or external references; raster images are re-encoded without metadata, max 50 megapixels and get_capabilities.limits.max_asset_bytes. Upload once and reuse the asset_id; list_assets finds existing ones.`
 
 	descListAssets = `List uploaded assets, newest first, with ids, types and pixel sizes. Deleted assets are not listed. Paginate with limit and next_cursor.`
+
+	descUpdateAsset = `Rename an uploaded image or change its description (alt text) without uploading it again. Send the asset id plus name, description or both; fields you omit keep their value and an empty description clears it. Find the id with list_assets. The image, its asset_id and every document or brand that already uses it stay unchanged, so use this to fix a wrong or unhelpful name instead of deleting and re-uploading. Deleted assets are not found.`
 
 	descDeleteAsset = `Delete an asset: it disappears from list_assets and can no longer be referenced by new documents or brands. Documents, templates and brand versions that already use it keep rendering. Not reversible through MCP.`
 )
@@ -104,6 +114,36 @@ func registerAssetTools(s *mcp.Server, d *Deps) {
 			}
 			c.Summary("%d asset(s)", len(out.Assets))
 			return out, nil
+		}})
+
+	register(s, d, tool[UpdateAssetIn, AssetOut]{Name: "update_asset", Title: "Rename an image asset", Description: descUpdateAsset,
+		Access: write, Idempotent: true,
+		Target: func(in UpdateAssetIn) (string, string) { return "asset", in.ID },
+		Handle: func(ctx context.Context, c *call, in UpdateAssetIn) (*AssetOut, error) {
+			if in.Name == nil && in.Description == nil {
+				return nil, invalid("send name or description (or both)")
+			}
+			cur, err := d.Assets.Get(ctx, in.ID)
+			if err != nil {
+				return nil, err
+			}
+			if cur.Deleted {
+				return nil, &model.Error{Code: model.ErrNotFound, Message: fmt.Sprintf("asset %s does not exist or is deleted", in.ID)}
+			}
+			name, desc := cur.Name, cur.Description
+			if in.Name != nil {
+				name = *in.Name
+			}
+			if in.Description != nil {
+				desc = *in.Description
+			}
+			a, err := d.Assets.Update(ctx, c.Actor, in.ID, name, desc)
+			if err != nil {
+				return nil, err
+			}
+			out := assetOut(a)
+			c.Summary("updated asset %s (%s)", a.ID, a.Name)
+			return &out, nil
 		}})
 
 	register(s, d, tool[IDIn, DeleteAssetOut]{Name: "delete_asset", Title: "Delete an asset", Description: descDeleteAsset, Access: destructive,

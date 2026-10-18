@@ -2,7 +2,7 @@
 // The /ui/api client: JSON in and out, the CSRF header on every change,
 // errors as ApiError with the server's code, message and findings.
 
-import type { Finding } from './types';
+import type { Asset, Finding } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -75,8 +75,14 @@ export const api = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>('GET', path, undefined, opts),
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>('POST', path, body ?? {}, opts),
   put: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('PUT', path, body, opts),
+  patch: <T>(path: string, body: unknown, opts?: RequestOptions) => request<T>('PATCH', path, body, opts),
   del: <T>(path: string, opts?: RequestOptions) => request<T>('DELETE', path, undefined, opts),
 };
+
+/** updateAsset renames an image and replaces its description. */
+export function updateAsset(id: string, name: string, description: string, opts?: RequestOptions): Promise<Asset> {
+  return api.patch<Asset>(`/assets/${encodeURIComponent(id)}`, { name, description }, opts);
+}
 
 /** query builds "?a=1&b=2" from the non-empty values. */
 export function query(params: Record<string, string | number | boolean | undefined | null>): string {

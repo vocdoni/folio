@@ -182,11 +182,15 @@ test('create a brand from a logo with the assistant @mobile', async ({ page }) =
   await signIn(page);
   await page.goto('/ui/assets');
   await page.locator('input[type=file]').setInputFiles(fixture('northwind-logo.png'));
-  await expect(page.getByText('Uploaded northwind-logo.png.')).toBeVisible();
+  const naming = page.getByRole('dialog', { name: 'Name your images' });
+  await expect(naming).toBeVisible();
+  await expect(naming.getByLabel('Name', { exact: true })).toHaveValue('northwind-logo');
+  await naming.getByRole('button', { name: 'Upload image' }).click();
+  await expect(page.getByText('Uploaded northwind-logo.')).toBeVisible();
   await axe(page, 'images');
   await page.goto('/ui/brands/new');
   await page.getByRole('button', { name: 'Suggest with the assistant' }).click();
-  await page.locator('#ai-asset').selectOption({ label: 'northwind-logo.png' });
+  await page.locator('#ai-asset').selectOption({ label: 'northwind-logo' });
   await page.getByRole('button', { name: 'Suggest', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Proposal: Northwind Traders' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText('Colours found in the logo')).toContainText('#0B5D4B');
@@ -202,6 +206,62 @@ test('create a brand from a logo with the assistant @mobile', async ({ page }) =
   await page.goto('/ui/settings');
   await expect(page.getByLabel('MCP address')).toContainText('/mcp');
   await axe(page, 'settings');
+  expect(w.problems).toEqual([]);
+});
+
+test('name an image at upload and rename it later @mobile', async ({ page }) => {
+  const w = await watch(page);
+  await signIn(page);
+  const unique = test.info().project.name;
+  const first = `Quarterly mark ${unique}`;
+  const second = `Annual mark ${unique}`;
+  await page.goto('/ui/assets');
+  const picker = page.locator('input[type=file]');
+
+  // Escape discards the pick: nothing is uploaded.
+  await picker.setInputFiles(fixture('northwind-logo.png'));
+  const naming = page.getByRole('dialog', { name: 'Name your images' });
+  await expect(naming).toBeVisible();
+  await expect(naming.getByLabel('Name', { exact: true })).toBeFocused();
+  await axe(page, 'name your images');
+  await page.keyboard.press('Escape');
+  await expect(naming).toBeHidden();
+  await expect(page.getByText('Uploaded', { exact: false })).toHaveCount(0);
+
+  // An empty name blocks the upload; a custom name and description are kept.
+  await picker.setInputFiles(fixture('northwind-logo.png'));
+  await expect(naming).toBeVisible();
+  const name = naming.getByLabel('Name', { exact: true });
+  await name.fill('');
+  await expect(naming.getByText('Give the image a name.')).toBeVisible();
+  await expect(naming.getByRole('button', { name: 'Upload image' })).toBeDisabled();
+  await name.fill(first);
+  await naming.getByLabel(/Describe the image for people who cannot see it/).fill('A green mark on white');
+  await naming.getByRole('button', { name: 'Upload image' }).click();
+  await expect(page.getByText(`Uploaded ${first}.`)).toBeVisible();
+  const tile = page.locator('.tile', { hasText: first });
+  await expect(tile.getByRole('img')).toHaveAttribute('alt', 'A green mark on white');
+
+  // Rename and re-describe it.
+  await tile.getByRole('button', { name: `Edit ${first}` }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit image' });
+  await expect(edit.getByLabel('Name', { exact: true })).toHaveValue(first);
+  await edit.getByLabel('Name', { exact: true }).fill(second);
+  await edit.getByLabel(/Describe the image for people who cannot see it/).fill('The annual report mark');
+  await axe(page, 'edit image');
+  await edit.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved.')).toBeVisible();
+  const renamed = page.locator('.tile', { hasText: second });
+  await expect(renamed).toBeVisible();
+  await expect(renamed.getByRole('img')).toHaveAttribute('alt', 'The annual report mark');
+  await expect(page.locator('.tile', { hasText: first })).toHaveCount(0);
+
+  // The new name is stored: it survives a reload and shows in the API.
+  await page.reload();
+  await expect(page.locator('.tile', { hasText: second })).toBeVisible();
+  const list = await (await page.request.get('/ui/api/assets?query=' + encodeURIComponent(second))).json();
+  expect(list.items.map((a: { name: string }) => a.name)).toContain(second);
+  await axe(page, 'images');
   expect(w.problems).toEqual([]);
 });
 
