@@ -4,6 +4,7 @@ package ai
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -61,5 +62,20 @@ func TestSchemaDescribeCopies(t *testing.T) {
 	var nilSchema *Schema
 	if n, _ := json.Marshal(nilSchema); string(n) != "null" {
 		t.Fatalf("nil schema: %s", n)
+	}
+}
+
+func TestSchemaDescribeRaw(t *testing.T) {
+	raw := Raw(json.RawMessage(`{ "type": "object", "description": "old", "properties": {"b": {"type":"string"}, "a": {"type":"string"}} }`))
+	got, err := json.Marshal(raw.Describe("new"))
+	if err != nil || string(got) != `{"description":"new","type":"object","properties":{"b":{"type":"string"},"a":{"type":"string"}}}` {
+		t.Fatalf("described raw: %s %v", got, err)
+	}
+	plain, _ := json.Marshal(raw)
+	if !strings.Contains(string(plain), `"old"`) {
+		t.Fatalf("Describe must not change the shared node: %s", plain)
+	}
+	if _, err := json.Marshal(Raw(json.RawMessage(`"x"`)).Describe("d")); err == nil {
+		t.Fatal("a described non-object raw schema must error")
 	}
 }

@@ -74,3 +74,25 @@ func TestUpdateRejects(t *testing.T) {
 		t.Fatalf("deleted asset changed: %+v", got)
 	}
 }
+
+// Upload counts runes like Update: 200 accented characters and a 500-rune
+// description are accepted; 201 and 501 are refused.
+func TestUploadLimitsCountRunes(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	png := base64.StdEncoding.EncodeToString(pngBytes(t, 8, 4))
+	a, err := s.Upload(ctx, "alice", UploadRequest{Name: strings.Repeat("é", 200), Description: " " + strings.Repeat("é", 500) + " ", ContentBase64: png})
+	if err != nil || a.Description != strings.Repeat("é", 500) {
+		t.Fatalf("limits are inclusive and counted in runes: %+v %v", a, err)
+	}
+	for name, req := range map[string]UploadRequest{
+		"long name": {Name: strings.Repeat("é", 201), ContentBase64: png},
+		"long desc": {Name: "ok", Description: strings.Repeat("é", 501), ContentBase64: png},
+	} {
+		_, err := s.Upload(ctx, "alice", req)
+		var me *model.Error
+		if !errors.As(err, &me) || me.Code != model.ErrInvalidInput {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

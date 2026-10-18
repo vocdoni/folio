@@ -3,8 +3,11 @@
 package webui
 
 import (
+	"bytes"
 	"context"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -79,5 +82,36 @@ func TestAssetUpdate(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatalf("no ui.asset.update row in %+v", rows)
+	}
+}
+
+// TestAssetUploadLimits: the upload endpoint applies the same rune limits as
+// rename (200-character name, 500-character description).
+func TestAssetUploadLimits(t *testing.T) {
+	sv := newServices(t, nil)
+	post := func(name, desc string) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		mw := multipart.NewWriter(&body)
+		fw, _ := mw.CreateFormFile("file", "logo.svg")
+		_, _ = fw.Write([]byte(testSVG))
+		_ = mw.WriteField("name", name)
+		_ = mw.WriteField("description", desc)
+		_ = mw.Close()
+		req := httptest.NewRequest("POST", "/ui/api/assets", &body)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		req.Header.Set(HeaderUI, "1")
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: sv.cookie})
+		w := httptest.NewRecorder()
+		sv.s.ServeHTTP(w, req)
+		return w
+	}
+	if w := post(strings.Repeat("é", 200), strings.Repeat("é", 500)); w.Code != 200 {
+		t.Fatalf("limits: %d %s", w.Code, w.Body)
+	}
+	if w := post(strings.Repeat("é", 201), "x"); w.Code != http.StatusBadRequest {
+		t.Fatalf("long name: %d %s", w.Code, w.Body)
+	}
+	if w := post("ok", strings.Repeat("é", 501)); w.Code != http.StatusBadRequest {
+		t.Fatalf("long description: %d %s", w.Code, w.Body)
 	}
 }

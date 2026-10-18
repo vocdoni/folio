@@ -5,6 +5,7 @@ package ai
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 )
 
 // Schema is a JSON Schema node for structured output whose JSON keeps
@@ -83,7 +84,22 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 		if err := json.Compact(&b, s.raw); err != nil {
 			return nil, err
 		}
-		return b.Bytes(), nil
+		if s.description == "" {
+			return b.Bytes(), nil
+		}
+		v, err := decodeOrdered(b.Bytes())
+		o, _ := v.(jsonObject)
+		if err != nil || o == nil {
+			return nil, errors.New("ai: Describe needs a raw object schema")
+		}
+		// The description goes first and replaces any the raw schema carries.
+		out := jsonObject{{"description", s.description}}
+		for _, m := range o {
+			if m.Key != "description" {
+				out = append(out, m)
+			}
+		}
+		return out.MarshalJSON()
 	}
 	var b bytes.Buffer
 	b.WriteString(`{"type":`)
