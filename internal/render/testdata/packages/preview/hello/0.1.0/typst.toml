@@ -1,0 +1,7 @@
+[package]
+name = "hello"
+version = "0.1.0"
+entrypoint = "lib.typ"
+authors = ["Folio test fixture"]
+license = "AGPL-3.0-only"
+description = "Fixture for the vendored package mechanism"

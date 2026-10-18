@@ -1,0 +1,22 @@
+{
+  "proposal": {
+    "pdf": "9b0b6180c307b2ec65705b46054ba6c9319f29c6b270351eb19c15c675c05185",
+    "docx": "c2df321c5734edfd012650f9789ecc05901ce2e5d6e228745a76fec852406353"
+  },
+  "quote": {
+    "pdf": "6a4d961bec3b3430cf8c44370107d18843e07079ee56fac3aa891173c035c4ac",
+    "docx": "3fda84ee9770a3a4b456f943aaa1cf4f82e2472f4b7c7d2f09b20ad60191fac9"
+  },
+  "requirements": {
+    "pdf": "5c427e2ba4fea79e6a612696501bce6ec791f37191e025c24e742badf7b2c7ae",
+    "docx": "72ee9176d5b6979bbc9f60ced7072b42b0d0707b0d27dee5b702480a11b62189"
+  },
+  "sow": {
+    "pdf": "6a75fd5fac68ece8d31f72741f75127be6fc635de97fc98d86b13dd4a692608f",
+    "docx": "bebb88e032b2d27c83b766dff01c77459400b3df213d04f643690613134a7717"
+  },
+  "technical-report": {
+    "pdf": "1b293afe3eefca84b43b619476c02479f4a14372e3a14d7bd76016534d4dfba4",
+    "docx": "a5085a8a22c2bb12de16246c7b4a72ebac2956177a10a3957bc7554ee0aaac4c"
+  }
+}

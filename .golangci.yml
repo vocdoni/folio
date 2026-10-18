@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - forbidigo
+    - gosec
+    - errorlint
+    - bodyclose
+    - noctx
+    - misspell
+    - unconvert
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*database/sql.Rows).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^(float32|float64)$'
+          msg: "no floating point in internal/money: use apd decimals"
+        - pattern: '^strconv\.ParseFloat$'
+          msg: "no floating point in internal/money"
+    gosec:
+      excludes:
+        - G104 # duplicated by errcheck
+        - G115 # integer conversions are bounded by validation
+        - G202 # SQL fragments are package constants (table names), values are bound
+        - G204 # the sandbox runner executes Folio itself with constructed args
+        - G302 # runtime files are deliberately read-only (0444/0555)
+        - G304 # paths are built by Folio (job dir, blob store, runtime dir)
+        - G306 # runtime files are deliberately read-only (0444)
+        - G122 # blob GC walks Folio's own data dir
+    misspell:
+      ignore-rules:
+        - autor
+        - projecte
+  exclusions:
+    rules:
+      - path-except: '^internal/money/'
+        linters: [forbidigo]
+      - path: '_test\.go$'
+        linters: [gosec, noctx, errcheck]
+      - path: '_test\.go$'
+        text: 'SA5002' # helper processes spin on purpose
+      - path: '^internal/sandbox/child_linux\.go$'
+        text: 'G103' # raw setrlimit+execve with pre-built pointers (no allocation window)
+formatters:
+  enable:
+    - gofmt
+    - goimports

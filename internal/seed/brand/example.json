@@ -1,0 +1,37 @@
+{
+  "id": "example",
+  "name": "Example Co",
+  "colors": {
+    "primary": "#1F4FD8",
+    "secondary": "#0B1F44",
+    "accent": "#F2A900",
+    "text": "#1A1A1A",
+    "muted": "#6B7280",
+    "background": "#FFFFFF"
+  },
+  "fonts": {
+    "heading": "Inter",
+    "body": "Source Serif 4",
+    "mono": "JetBrains Mono"
+  },
+  "logo": {
+    "asset_id": "00000000-0000-7000-8000-00000000c0de",
+    "width_mm": 40
+  },
+  "header": {
+    "text": "",
+    "show_logo": true
+  },
+  "footer": {
+    "text": "Example Co · example.com",
+    "legal": "Example Co S.L. · VAT ES00000000X",
+    "page_numbers": true
+  },
+  "docx": {
+    "font_fallbacks": {
+      "heading": "Arial",
+      "body": "Georgia",
+      "mono": "Courier New"
+    }
+  }
+}

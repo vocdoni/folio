@@ -1,0 +1,412 @@
+{
+  "template": {
+    "id": "proposal",
+    "name": "Project proposal",
+    "description": "Commercial proposal with scope, plan, deliverables and budget.",
+    "category": "proposal",
+    "brand_id": "example",
+    "languages": [
+      "en",
+      "es",
+      "ca"
+    ],
+    "layout": {
+      "base": "proposal",
+      "typst": null,
+      "options": {
+        "cover": true,
+        "toc": true,
+        "page_size": "a4",
+        "heading_numbering": true
+      }
+    },
+    "metadata_schema": {
+      "type": "object",
+      "required": [
+        "client"
+      ],
+      "properties": {
+        "client": {
+          "type": "string",
+          "minLength": 1
+        },
+        "valid_until": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      }
+    },
+    "data_schema": {
+      "type": "object",
+      "required": [
+        "budget"
+      ],
+      "properties": {
+        "budget": {
+          "$ref": "folio:component/budget"
+        },
+        "milestones": {
+          "$ref": "folio:component/milestones"
+        },
+        "deliverables": {
+          "$ref": "folio:component/deliverables"
+        },
+        "signatures": {
+          "$ref": "folio:component/signatures"
+        }
+      }
+    },
+    "sections": [
+      {
+        "title": "Executive summary",
+        "required": true,
+        "aliases": [
+          "Summary",
+          "Resumen ejecutivo",
+          "Resum executiu"
+        ],
+        "hint": "Two or three paragraphs: the problem, the proposal, the outcome."
+      },
+      {
+        "title": "Context",
+        "aliases": [
+          "Contexto",
+          "Context"
+        ]
+      },
+      {
+        "title": "Scope",
+        "required": true,
+        "aliases": [
+          "Alcance",
+          "Abast"
+        ],
+        "hint": "Bullet list of what is included."
+      },
+      {
+        "title": "Approach",
+        "aliases": [
+          "Enfoque",
+          "Enfocament"
+        ]
+      },
+      {
+        "title": "Plan",
+        "aliases": [
+          "Planificación",
+          "Planificació"
+        ],
+        "component": "milestones"
+      },
+      {
+        "title": "Deliverables",
+        "aliases": [
+          "Entregables",
+          "Lliurables"
+        ],
+        "component": "deliverables"
+      },
+      {
+        "title": "Budget",
+        "required": true,
+        "aliases": [
+          "Presupuesto",
+          "Pressupost"
+        ],
+        "component": "budget"
+      },
+      {
+        "title": "Terms",
+        "aliases": [
+          "Condiciones",
+          "Condicions"
+        ]
+      },
+      {
+        "title": "Acceptance",
+        "aliases": [
+          "Aceptación",
+          "Acceptació"
+        ],
+        "component": "signatures"
+      }
+    ],
+    "components": [
+      "budget",
+      "milestones",
+      "deliverables",
+      "signatures",
+      "info"
+    ],
+    "strict": false,
+    "body_skeleton": "# Executive summary\n\nTODO\n\n::: folio-info\n:::\n\n# Scope\n\n- TODO\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+    "sample": {
+      "markdown": "# Executive summary\n\nExample Co proposes to redesign the ACME public website so that customers find products faster and the team can publish content without developer help.\n\n::: folio-info\n:::\n\n# Context\n\nACME's current site was built in 2019. Analytics show that 60% of visitors leave from the product listing pages.\n\n# Scope\n\n- Information architecture and navigation\n- Visual design system and page templates\n- Content migration of 120 product pages\n- Analytics and accessibility review (WCAG 2.2 AA)\n\n# Approach\n\nWe work in two-week iterations with a demo at the end of each one.\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Terms\n\nPrices exclude travel. Invoices are payable within 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+      "metadata": {
+        "title": "Website redesign proposal",
+        "date": "2026-10-18",
+        "language": "en",
+        "client": "ACME Corp",
+        "project": "Website redesign",
+        "reference": "EX-2026-041",
+        "author": "Jane Doe",
+        "version_label": "v1.0"
+      },
+      "data": {
+        "budget": {
+          "currency": "EUR",
+          "tax_rate": "21",
+          "items": [
+            {
+              "description": "Discovery and information architecture",
+              "quantity": "1",
+              "unit": "project",
+              "unit_price": "4800"
+            },
+            {
+              "description": "Design system and templates",
+              "quantity": "12",
+              "unit": "day",
+              "unit_price": "650"
+            },
+            {
+              "description": "Content migration",
+              "quantity": "120",
+              "unit": "page",
+              "unit_price": "35",
+              "discount_pct": "10"
+            },
+            {
+              "description": "Accessibility review",
+              "quantity": "1",
+              "unit": "project",
+              "unit_price": "1900"
+            }
+          ],
+          "notes": "Valid for 60 days from the proposal date."
+        },
+        "milestones": [
+          {
+            "name": "Kick-off and discovery",
+            "date": "2026-11-02",
+            "deliverables": [
+              "D1"
+            ],
+            "payment_pct": "30"
+          },
+          {
+            "name": "Design system approved",
+            "date": "2026-12-04",
+            "deliverables": [
+              "D2"
+            ],
+            "payment_pct": "40"
+          },
+          {
+            "name": "Launch",
+            "date": "2027-01-29",
+            "deliverables": [
+              "D3",
+              "D4"
+            ],
+            "payment_pct": "30"
+          }
+        ],
+        "deliverables": [
+          {
+            "id": "D1",
+            "name": "Site map and wireframes",
+            "due": "2026-11-20",
+            "acceptance": "Approved by the ACME product owner"
+          },
+          {
+            "id": "D2",
+            "name": "Design system",
+            "due": "2026-12-04",
+            "acceptance": "Components documented in the design tool"
+          },
+          {
+            "id": "D3",
+            "name": "Migrated product pages",
+            "due": "2027-01-22",
+            "acceptance": "All 120 pages live on staging"
+          },
+          {
+            "id": "D4",
+            "name": "Accessibility report",
+            "due": "2027-01-29",
+            "acceptance": "No open WCAG 2.2 AA blockers"
+          }
+        ],
+        "signatures": [
+          {
+            "name": "Jane Doe",
+            "role": "Managing Director",
+            "organization": "Example Co"
+          },
+          {
+            "name": "John Smith",
+            "role": "Head of Digital",
+            "organization": "ACME Corp"
+          }
+        ]
+      }
+    }
+  },
+  "template_version": 1,
+  "brand": {
+    "id": "example",
+    "name": "Example Co",
+    "colors": {
+      "primary": "#1F4FD8",
+      "secondary": "#0B1F44",
+      "accent": "#F2A900",
+      "text": "#1A1A1A",
+      "muted": "#6B7280",
+      "background": "#FFFFFF"
+    },
+    "fonts": {
+      "heading": "Inter",
+      "body": "Source Serif 4",
+      "mono": "JetBrains Mono"
+    },
+    "logo": {
+      "asset_id": "00000000-0000-7000-8000-00000000c0de",
+      "width_mm": 40
+    },
+    "header": {
+      "text": "",
+      "show_logo": true
+    },
+    "footer": {
+      "text": "Example Co · example.com",
+      "legal": "Example Co S.L. · VAT ES00000000X",
+      "page_numbers": true
+    },
+    "docx": {
+      "font_fallbacks": {
+        "heading": "Arial",
+        "body": "Georgia",
+        "mono": "Courier New"
+      }
+    }
+  },
+  "brand_version": 1,
+  "assets_dir": "assets",
+  "document": {
+    "markdown": "# Executive summary\n\nExample Co proposes to redesign the ACME public website so that customers find products faster and the team can publish content without developer help.\n\n::: folio-info\n:::\n\n# Context\n\nACME's current site was built in 2019. Analytics show that 60% of visitors leave from the product listing pages.\n\n# Scope\n\n- Information architecture and navigation\n- Visual design system and page templates\n- Content migration of 120 product pages\n- Analytics and accessibility review (WCAG 2.2 AA)\n\n# Approach\n\nWe work in two-week iterations with a demo at the end of each one.\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Terms\n\nPrices exclude travel. Invoices are payable within 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+    "metadata": {
+      "title": "Website redesign proposal",
+      "date": "2026-10-18",
+      "language": "en",
+      "client": "ACME Corp",
+      "project": "Website redesign",
+      "reference": "EX-2026-041",
+      "author": "Jane Doe",
+      "version_label": "v1.0"
+    },
+    "data": {
+      "budget": {
+        "currency": "EUR",
+        "tax_rate": "21",
+        "items": [
+          {
+            "description": "Discovery and information architecture",
+            "quantity": "1",
+            "unit": "project",
+            "unit_price": "4800"
+          },
+          {
+            "description": "Design system and templates",
+            "quantity": "12",
+            "unit": "day",
+            "unit_price": "650"
+          },
+          {
+            "description": "Content migration",
+            "quantity": "120",
+            "unit": "page",
+            "unit_price": "35",
+            "discount_pct": "10"
+          },
+          {
+            "description": "Accessibility review",
+            "quantity": "1",
+            "unit": "project",
+            "unit_price": "1900"
+          }
+        ],
+        "notes": "Valid for 60 days from the proposal date."
+      },
+      "milestones": [
+        {
+          "name": "Kick-off and discovery",
+          "date": "2026-11-02",
+          "deliverables": [
+            "D1"
+          ],
+          "payment_pct": "30"
+        },
+        {
+          "name": "Design system approved",
+          "date": "2026-12-04",
+          "deliverables": [
+            "D2"
+          ],
+          "payment_pct": "40"
+        },
+        {
+          "name": "Launch",
+          "date": "2027-01-29",
+          "deliverables": [
+            "D3",
+            "D4"
+          ],
+          "payment_pct": "30"
+        }
+      ],
+      "deliverables": [
+        {
+          "id": "D1",
+          "name": "Site map and wireframes",
+          "due": "2026-11-20",
+          "acceptance": "Approved by the ACME product owner"
+        },
+        {
+          "id": "D2",
+          "name": "Design system",
+          "due": "2026-12-04",
+          "acceptance": "Components documented in the design tool"
+        },
+        {
+          "id": "D3",
+          "name": "Migrated product pages",
+          "due": "2027-01-22",
+          "acceptance": "All 120 pages live on staging"
+        },
+        {
+          "id": "D4",
+          "name": "Accessibility report",
+          "due": "2027-01-29",
+          "acceptance": "No open WCAG 2.2 AA blockers"
+        }
+      ],
+      "signatures": [
+        {
+          "name": "Jane Doe",
+          "role": "Managing Director",
+          "organization": "Example Co"
+        },
+        {
+          "name": "John Smith",
+          "role": "Head of Digital",
+          "organization": "ACME Corp"
+        }
+      ]
+    },
+    "formats": [
+      "pdf",
+      "docx"
+    ]
+  }
+}
