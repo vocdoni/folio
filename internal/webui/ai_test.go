@@ -16,13 +16,17 @@ import (
 )
 
 // aiStub is a stub OpenRouter: answers are queued per json_schema name;
-// gate (when set) holds every answer until closed.
+// gate (when set) holds every answer until closed; finish (when set) is
+// the finish reason of every answer and status (when set) fails every call
+// with that HTTP status.
 type aiStub struct {
 	mu      sync.Mutex
 	answers map[string][]string
 	calls   map[string]int
 	gate    chan struct{}
 	reqs    []map[string]any
+	finish  string
+	status  int
 }
 
 func (s *aiStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +51,16 @@ func (s *aiStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.answers[name] = q[1:]
 		}
 	}
+	finish, status := s.finish, s.status
 	s.mu.Unlock()
+	if finish == "" {
+		finish = "stop"
+	}
+	if status != 0 {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":{"message":"upstream exploded"}}`))
+		return
+	}
 	if gate != nil {
 		select {
 		case <-gate:
@@ -55,7 +68,7 @@ func (s *aiStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	out, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": a}}}})
+	out, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"finish_reason": finish, "message": map[string]any{"content": a}}}})
 	_, _ = w.Write(out)
 }
 
@@ -96,10 +109,8 @@ func (sv *svc) waitJob(id string) JobOut {
 	}
 }
 
-func planJSON(meta, data map[string]any) string {
-	m, _ := json.Marshal(meta)
-	d, _ := json.Marshal(data)
-	b, _ := json.Marshal(map[string]any{"template_id": "memo", "metadata_json": string(m), "data_json": string(d), "warnings": []string{}})
+func planJSON(meta map[string]any) string {
+	b, _ := json.Marshal(map[string]any{"template_id": "memo", "metadata": meta, "warnings": []string{}})
 	return string(b)
 }
 
@@ -118,7 +129,7 @@ func TestAIOffWithoutKey(t *testing.T) {
 // flagged inferred; the Markdown is never part of the result.
 func TestDocumentPlanJob(t *testing.T) {
 	stub := &aiStub{answers: map[string][]string{"document_plan": {planJSON(
-		map[string]any{"title": "Hello memo", "date": "2026-10-18", "language": "en", "client": "Globex"}, map[string]any{})}}}
+		map[string]any{"title": "Hello memo", "date": "2026-10-18", "language": "en", "client": "Globex"})}}}
 	sv := newAIServices(t, stub, nil)
 	decode[map[string]any](t, sv.do("POST", "/ui/api/brands", BrandIn{Brand: brandSpec("acme")}, nil), 200)
 	decode[TemplateSavedOut](t, sv.do("POST", "/ui/api/templates", TemplateIn{Template: templateSpec("memo", "acme")}, nil), 200)
@@ -143,6 +154,30 @@ func TestDocumentPlanJob(t *testing.T) {
 	}
 }
 
+// TestAssistantFailuresAreClear: an answer cut off at max_tokens and an
+// upstream failure end the job with a retryable unavailable error that says
+// what happened (never internal).
+func TestAssistantFailuresAreClear(t *testing.T) {
+	stub := &aiStub{finish: "length", answers: map[string][]string{"document_plan": {`{"template_id":"me`}}}
+	sv := newAIServices(t, stub, nil)
+	decode[map[string]any](t, sv.do("POST", "/ui/api/brands", BrandIn{Brand: brandSpec("acme")}, nil), 200)
+	decode[TemplateSavedOut](t, sv.do("POST", "/ui/api/templates", TemplateIn{Template: templateSpec("memo", "acme")}, nil), 200)
+	for _, c := range []struct {
+		finish string
+		status int
+		want   string
+	}{{"length", 0, "cut off"}, {"stop", http.StatusBadGateway, "the AI service failed: openrouter returned HTTP 502: upstream exploded"}} {
+		stub.mu.Lock()
+		stub.finish, stub.status = c.finish, c.status
+		stub.mu.Unlock()
+		started := decode[JobStartedOut](t, sv.do("POST", "/ui/api/ai/document-plan", DocumentPlanIn{Markdown: "# Summary\n\nHello."}, nil), http.StatusAccepted)
+		j := sv.waitJob(started.JobID)
+		if j.State != jobError || j.Error.Code != "unavailable" || !j.Error.Retryable || !strings.Contains(j.Error.Message, c.want) {
+			t.Fatalf("%s/%d: %+v", c.finish, c.status, j.Error)
+		}
+	}
+}
+
 // TestAIJobLimits: one running job per session (ai_busy), the per-session
 // hourly quota (ai_quota), jobs are private to their session and cancelled
 // on logout.
@@ -154,6 +189,7 @@ func TestAIJobLimits(t *testing.T) {
 		o.Config = &c
 	})
 	decode[map[string]any](t, sv.do("POST", "/ui/api/brands", BrandIn{Brand: brandSpec("acme")}, nil), 200)
+	decode[TemplateSavedOut](t, sv.do("POST", "/ui/api/templates", TemplateIn{Template: templateSpec("memo", "acme")}, nil), 200)
 	first := decode[JobStartedOut](t, sv.do("POST", "/ui/api/ai/document-plan", DocumentPlanIn{Markdown: "# A"}, nil), http.StatusAccepted)
 	if w := sv.do("POST", "/ui/api/ai/document-plan", DocumentPlanIn{Markdown: "# B"}, nil); w.Code != http.StatusTooManyRequests || errorCode(t, w) != "ai_busy" {
 		t.Fatalf("second running job: %d %s", w.Code, w.Body)

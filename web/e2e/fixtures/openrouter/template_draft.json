@@ -10,13 +10,14 @@
   ],
   "layout": {
    "base": "report",
-   "cover": true,
-   "toc": false,
-   "page_size": "a4",
-   "heading_numbering": true
+   "options": {
+    "cover": true,
+    "toc": false,
+    "page_size": "a4",
+    "heading_numbering": true
+   }
   },
-  "metadata_schema_json": "{not json",
-  "data_schema_json": "",
+  "strict": false,
   "sections": [
    {
     "title": "Parties",
@@ -51,12 +52,64 @@
    "budget",
    "signatures"
   ],
-  "strict": false,
+  "metadata_fields": [
+   {
+    "name": "term",
+    "type": "enum",
+    "enum": [],
+    "required": false
+   }
+  ],
   "body_skeleton": "# Parties\n\nTODO\n\n# Services\n\nTODO\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
   "sample": {
    "markdown": "# Parties\n\nExample Co and ACME Corp.\n\n# Services\n\nMonthly maintenance of the office network.\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
-   "metadata_json": "{\"title\":\"Network maintenance agreement\",\"date\":\"2026-10-18\",\"language\":\"en\",\"client\":\"ACME Corp\"}",
-   "data_json": "{\"budget\":{\"items\":[{\"description\":\"Monthly maintenance\",\"quantity\":\"12\",\"unit\":\"months\",\"unit_price\":\"€450.00\",\"amount\":\"€5,400.00\"}],\"totals\":[{\"label\":\"Total per year\",\"amount\":\"€5,400.00\",\"emphasis\":true}]},\"signatures\":[{\"name\":\"Jane Doe\",\"role\":\"Director\",\"organization\":\"Example Co\"},{\"name\":\"John Smith\",\"role\":\"Office manager\",\"organization\":\"ACME Corp\"}]}"
+   "metadata": {
+    "title": "Network maintenance agreement",
+    "date": "2026-10-18",
+    "language": "en",
+    "fields": [
+     {
+      "name": "client",
+      "value": "ACME Corp"
+     },
+     {
+      "name": "term",
+      "value": "12 months"
+     }
+    ]
+   },
+   "data": {
+    "budget": {
+     "items": [
+      {
+       "description": "Monthly maintenance",
+       "quantity": "12",
+       "unit": "months",
+       "unit_price": "€450.00",
+       "amount": "€5,400.00"
+      }
+     ],
+     "totals": [
+      {
+       "label": "Total per year",
+       "amount": "€5,400.00",
+       "emphasis": true
+      }
+     ]
+    },
+    "signatures": [
+     {
+      "name": "Jane Doe",
+      "role": "Director",
+      "organization": "Example Co"
+     },
+     {
+      "name": "John Smith",
+      "role": "Office manager",
+      "organization": "ACME Corp"
+     }
+    ]
+   }
   }
  },
  {
@@ -70,13 +123,14 @@
   ],
   "layout": {
    "base": "report",
-   "cover": true,
-   "toc": false,
-   "page_size": "a4",
-   "heading_numbering": true
+   "options": {
+    "cover": true,
+    "toc": false,
+    "page_size": "a4",
+    "heading_numbering": true
+   }
   },
-  "metadata_schema_json": "{\"type\":\"object\",\"properties\":{\"term\":{\"type\":\"string\",\"title\":\"Term\"}}}",
-  "data_schema_json": "{\"type\":\"object\",\"required\":[\"budget\"],\"properties\":{\"budget\":{\"$ref\":\"folio:component/budget\"},\"signatures\":{\"$ref\":\"folio:component/signatures\"}}}",
+  "strict": false,
   "sections": [
    {
     "title": "Parties",
@@ -111,12 +165,64 @@
    "budget",
    "signatures"
   ],
-  "strict": false,
+  "metadata_fields": [
+   {
+    "name": "term",
+    "type": "string",
+    "enum": [],
+    "required": false
+   }
+  ],
   "body_skeleton": "# Parties\n\nTODO\n\n# Services\n\nTODO\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
   "sample": {
    "markdown": "# Parties\n\nExample Co and ACME Corp.\n\n# Services\n\nMonthly maintenance of the office network.\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
-   "metadata_json": "{\"title\":\"Network maintenance agreement\",\"date\":\"2026-10-18\",\"language\":\"en\",\"client\":\"ACME Corp\"}",
-   "data_json": "{\"budget\":{\"items\":[{\"description\":\"Monthly maintenance\",\"quantity\":\"12\",\"unit\":\"months\",\"unit_price\":\"€450.00\",\"amount\":\"€5,400.00\"}],\"totals\":[{\"label\":\"Total per year\",\"amount\":\"€5,400.00\",\"emphasis\":true}]},\"signatures\":[{\"name\":\"Jane Doe\",\"role\":\"Director\",\"organization\":\"Example Co\"},{\"name\":\"John Smith\",\"role\":\"Office manager\",\"organization\":\"ACME Corp\"}]}"
+   "metadata": {
+    "title": "Network maintenance agreement",
+    "date": "2026-10-18",
+    "language": "en",
+    "fields": [
+     {
+      "name": "client",
+      "value": "ACME Corp"
+     },
+     {
+      "name": "term",
+      "value": "12 months"
+     }
+    ]
+   },
+   "data": {
+    "budget": {
+     "items": [
+      {
+       "description": "Monthly maintenance",
+       "quantity": "12",
+       "unit": "months",
+       "unit_price": "€450.00",
+       "amount": "€5,400.00"
+      }
+     ],
+     "totals": [
+      {
+       "label": "Total per year",
+       "amount": "€5,400.00",
+       "emphasis": true
+      }
+     ]
+    },
+    "signatures": [
+     {
+      "name": "Jane Doe",
+      "role": "Director",
+      "organization": "Example Co"
+     },
+     {
+      "name": "John Smith",
+      "role": "Office manager",
+      "organization": "ACME Corp"
+     }
+    ]
+   }
   }
  }
 ]

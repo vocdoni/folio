@@ -165,7 +165,7 @@ func newReviewer(cfg *config.Config, injected review.Reviewer, log *slog.Logger)
 		return nil, nil
 	}
 	or, err := review.NewOpenRouter(review.OpenRouterConfig{APIKey: cfg.OpenRouterAPIKey, Model: cfg.ReviewModel, MaxPages: cfg.ReviewMaxPages,
-		BaseURL: cfg.OpenRouterBaseURL})
+		BaseURL: cfg.OpenRouterBaseURL, Logger: log})
 	if err != nil {
 		return nil, fmt.Errorf("app: %w", err)
 	}
@@ -277,7 +277,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	if cfg.UIEnabled() {
 		var assistant *ai.Client
 		if cfg.OpenRouterAPIKey != "" {
-			if assistant, err = ai.New(ai.Config{APIKey: cfg.OpenRouterAPIKey, Model: cfg.AIModel, BaseURL: cfg.OpenRouterBaseURL}); err != nil {
+			if assistant, err = ai.New(ai.Config{APIKey: cfg.OpenRouterAPIKey, Model: cfg.AIModel, BaseURL: cfg.OpenRouterBaseURL, Logger: log}); err != nil {
 				return nil, fmt.Errorf("app: %w", err)
 			}
 			log.Info("web UI assistants enabled: content you send to an assistant goes to OpenRouter", "model", cfg.AIModel)

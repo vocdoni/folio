@@ -1,8 +1,43 @@
 [
   {
     "template_id": "quote",
-    "metadata_json": "{\"title\":\"Lisbon showroom screens\",\"date\":\"2026-10-18\",\"language\":\"en\",\"client\":\"Northwind Traders\",\"reference\":\"NW-2026-031\",\"valid_until\":\"2026-11-30\",\"project\":\"Showroom refit\"}",
-    "data_json": "{\"budget\":{\"items\":[{\"description\":\"55-inch display screens\",\"quantity\":\"6\",\"unit_price\":\"€1,150.00\",\"amount\":\"€6,900.00\"},{\"description\":\"Mounting and installation\",\"quantity\":\"2\",\"unit\":\"days\",\"unit_price\":\"€640.00\",\"amount\":\"€1,280.00\"}],\"totals\":[{\"label\":\"Total\",\"amount\":\"€8,180.00\",\"emphasis\":true}]}}",
-    "warnings": ["The text does not list the line items; check the budget before you render."]
+    "metadata": {
+      "title": "Lisbon showroom screens",
+      "date": "2026-10-18",
+      "language": "en",
+      "client": "Northwind Traders",
+      "reference": "NW-2026-031",
+      "valid_until": "2026-11-30",
+      "project": "Showroom refit"
+    },
+    "data": {
+      "budget": {
+        "items": [
+          {
+            "description": "55-inch display screens",
+            "quantity": "6",
+            "unit_price": "€1,150.00",
+            "amount": "€6,900.00"
+          },
+          {
+            "description": "Mounting and installation",
+            "quantity": "2",
+            "unit": "days",
+            "unit_price": "€640.00",
+            "amount": "€1,280.00"
+          }
+        ],
+        "totals": [
+          {
+            "label": "Total",
+            "amount": "€8,180.00",
+            "emphasis": true
+          }
+        ]
+      }
+    },
+    "warnings": [
+      "The text does not list the line items; check the budget before you render."
+    ]
   }
 ]

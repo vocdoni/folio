@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -64,9 +65,12 @@ func invalid(format string, args ...any) error {
 
 // Upload validates, sanitises and stores an asset.
 func (s *Service) Upload(ctx context.Context, actor string, req UploadRequest) (*Asset, error) {
-	name := strings.TrimSpace(req.Name)
-	if name == "" || len(name) > 200 {
-		return nil, invalid("name is required (at most 200 characters)")
+	name, description := strings.TrimSpace(req.Name), strings.TrimSpace(req.Description)
+	if n := utf8.RuneCountInString(name); n == 0 || n > 200 {
+		return nil, invalid("name is required (1 to 200 characters)")
+	}
+	if utf8.RuneCountInString(description) > 500 {
+		return nil, invalid("description is at most 500 characters")
 	}
 	var raw []byte
 	switch {
@@ -100,7 +104,7 @@ func (s *Service) Upload(ctx context.Context, actor string, req UploadRequest) (
 	case err != nil:
 		return nil, invalid("%v", err)
 	}
-	a := &Asset{ID: uuid.Must(uuid.NewV7()).String(), Name: name, Description: req.Description, MIME: san.MIME,
+	a := &Asset{ID: uuid.Must(uuid.NewV7()).String(), Name: name, Description: description, MIME: san.MIME,
 		Size: len(san.Data), Width: san.Width, Height: san.Height, CreatedBy: actor, CreatedAt: s.Now().UTC().Truncate(time.Second)}
 	if san.MIME == MIMESVG {
 		pngData, err := s.Raster.SVGToPNG(ctx, san.Data)
@@ -177,6 +181,32 @@ func (s *Service) Asset(ctx context.Context, id string, allowDeleted bool) (mode
 		}
 	}
 	return out, nil
+}
+
+// Update renames a live asset and replaces its description (an empty
+// description clears it). The stored blobs are untouched.
+func (s *Service) Update(ctx context.Context, actor, id, name, description string) (*Asset, error) {
+	name, description = strings.TrimSpace(name), strings.TrimSpace(description)
+	if n := utf8.RuneCountInString(name); n == 0 || n > 200 {
+		return nil, invalid("name is required (1 to 200 characters)")
+	}
+	if utf8.RuneCountInString(description) > 500 {
+		return nil, invalid("description is at most 500 characters")
+	}
+	err := s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE assets SET name = ?, description = ? WHERE id = ? AND deleted_at IS NULL`, name, description, id)
+		if err != nil {
+			return fmt.Errorf("assets: update: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return &model.Error{Code: model.ErrNotFound, Message: fmt.Sprintf("asset %s does not exist or is deleted", id)}
+		}
+		return store.Audit(ctx, tx, s.Now(), actor, "update_asset", "asset", id, "ok", nil)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id)
 }
 
 // Delete hides an asset from listings and new references (blobs stay).

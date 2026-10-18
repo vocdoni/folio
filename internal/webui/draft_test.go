@@ -25,14 +25,20 @@ func (fakeConvert) RasterizePDFPage(_ context.Context, _ []byte, page, _ int) ([
 	return testPNG(80+page, 100), nil
 }
 
-func draftJSON(metaSchema string) string {
+// draftJSON is a template draft answer; fields are its metadata_fields.
+func draftJSON(fields ...map[string]any) string {
+	if fields == nil {
+		fields = []map[string]any{}
+	}
 	b, _ := json.Marshal(map[string]any{
 		"id": "memo-ai", "name": "AI memo", "description": "Drafted.", "category": "memo", "brand_id": "acme", "languages": []string{"en"},
-		"layout":               map[string]any{"base": "report", "cover": false, "toc": false, "page_size": "a4", "heading_numbering": false},
-		"metadata_schema_json": metaSchema, "data_schema_json": "",
+		"layout":     map[string]any{"base": "report", "options": map[string]any{"cover": false, "toc": false, "page_size": "a4", "heading_numbering": false}},
+		"strict":     false,
 		"sections":   []any{map[string]any{"title": "Summary", "required": true, "aliases": []string{}, "hint": "", "component": ""}},
-		"components": []string{}, "strict": false, "body_skeleton": "# Summary\n\nTODO\n",
-		"sample": map[string]any{"markdown": "# Summary\n\nAll good.", "metadata_json": `{"title":"Memo","date":"2026-10-18","language":"en"}`, "data_json": ""},
+		"components": []string{}, "metadata_fields": fields, "body_skeleton": "# Summary\n\nTODO\n",
+		"sample": map[string]any{"markdown": "# Summary\n\nAll good.",
+			"metadata": map[string]any{"title": "Memo", "date": "2026-10-18", "language": "en", "fields": []any{map[string]any{"name": "team", "value": "Platform"}}},
+			"data":     map[string]any{}},
 	})
 	return string(b)
 }
@@ -49,10 +55,13 @@ func newDraftServices(t *testing.T, stub *aiStub) *svc {
 	return sv
 }
 
-// TestTemplateDraftRepairRound (B-AC5): an invalid schema string, then a
-// valid spec: the repair round runs and the job ends done with a preview.
+// TestTemplateDraftRepairRound (B-AC5): a choice field without choices,
+// then a valid spec: the repair round runs and the job ends done with a
+// preview; Folio wrote the metadata_schema from the fields.
 func TestTemplateDraftRepairRound(t *testing.T) {
-	stub := &aiStub{answers: map[string][]string{"template_draft": {draftJSON("{not json"), draftJSON(`{"type":"object","properties":{"team":{"type":"string"}}}`)}}}
+	stub := &aiStub{answers: map[string][]string{"template_draft": {
+		draftJSON(map[string]any{"name": "team", "type": "enum", "enum": []string{}, "required": true}),
+		draftJSON(map[string]any{"name": "team", "type": "string", "enum": []string{}, "required": true})}}}
 	sv := newDraftServices(t, stub)
 	started := decode[JobStartedOut](t, sv.do("POST", "/ui/api/ai/template-draft", TemplateDraftIn{Description: "A one-page internal memo."}, nil), http.StatusAccepted)
 	j := sv.waitJob(started.JobID)
@@ -61,6 +70,9 @@ func TestTemplateDraftRepairRound(t *testing.T) {
 	_ = json.Unmarshal(raw, &d)
 	if j.State != jobDone || !d.OK || !d.Repaired || d.Spec.ID != "memo-ai" || d.Spec.Layout.Typst != nil || len(d.PageURLs) != 2 || stub.count("template_draft") != 2 {
 		t.Fatalf("draft %s (%d calls)", raw, stub.count("template_draft"))
+	}
+	if string(d.Spec.MetadataSchema) != `{"properties":{"team":{"maxLength":300,"type":"string"}},"required":["team"],"type":"object"}` { // keys sorted by the job result
+		t.Fatalf("metadata_schema %s", d.Spec.MetadataSchema)
 	}
 	if w := sv.do("GET", d.PageURLs[0], nil, nil); w.Code != 200 {
 		t.Fatalf("draft preview page: %d", w.Code)
@@ -73,7 +85,7 @@ func TestTemplateDraftRepairRound(t *testing.T) {
 }
 
 func TestTemplateDraftExamples(t *testing.T) {
-	stub := &aiStub{answers: map[string][]string{"template_draft": {draftJSON("")}}}
+	stub := &aiStub{answers: map[string][]string{"template_draft": {draftJSON()}}}
 	sv := newDraftServices(t, stub)
 	pdf, err := os.ReadFile(filepath.Join("..", "checks", "testdata", "two-pages.pdf"))
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -48,28 +49,13 @@ Do not judge, summarise, translate or rewrite the content, and do not check fact
 
 // findingsSchema is the response_format JSON schema (strict mode: every
 // property required, no additional properties).
-func findingsSchema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"findings"},
-		"properties": map[string]any{
-			"findings": map[string]any{
-				"type": "array",
-				"items": map[string]any{
-					"type":                 "object",
-					"additionalProperties": false,
-					"required":             []string{"page", "severity", "category", "message"},
-					"properties": map[string]any{
-						"page":     map[string]any{"type": "integer", "description": "page number as given before the image"},
-						"severity": map[string]any{"type": "string", "enum": Severities},
-						"category": map[string]any{"type": "string", "enum": Categories},
-						"message":  map[string]any{"type": "string", "description": "the defect and where it is on the page"},
-					},
-				},
-			},
-		},
-	}
+func findingsSchema() *ai.Schema {
+	return ai.Object(ai.Prop("findings", ai.Array(ai.Object(
+		ai.Prop("page", ai.Int().Describe("page number as given before the image")),
+		ai.Prop("severity", ai.Enum(Severities...)),
+		ai.Prop("category", ai.Enum(Categories...)),
+		ai.Prop("message", ai.Str().Describe("the defect and where it is on the page")),
+	))))
 }
 
 // OpenRouterConfig configures the OpenRouter reviewer.
@@ -85,6 +71,9 @@ type OpenRouterConfig struct {
 	// overall timeout of its own (the per-call context bounds it) and never
 	// follows redirects.
 	HTTPClient *http.Client
+	// Logger gets one record per model call (no content, no key); nil =
+	// no logging.
+	Logger *slog.Logger
 }
 
 // OpenRouter reviews pages with a vision model through OpenRouter's chat
@@ -109,7 +98,7 @@ func NewOpenRouter(c OpenRouterConfig) (*OpenRouter, error) {
 	if c.Model == "" {
 		c.Model = DefaultModel
 	}
-	client, err := ai.New(ai.Config{APIKey: c.APIKey, Model: c.Model, BaseURL: c.BaseURL, Timeout: c.Timeout, HTTPClient: c.HTTPClient})
+	client, err := ai.New(ai.Config{APIKey: c.APIKey, Model: c.Model, BaseURL: c.BaseURL, Timeout: c.Timeout, HTTPClient: c.HTTPClient, Logger: c.Logger})
 	if err != nil {
 		return nil, fmt.Errorf("review: %w", err)
 	}

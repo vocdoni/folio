@@ -5,17 +5,12 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image"
-	"net/url"
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
-
-	"golang.org/x/net/html"
 
 	"github.com/vocdoni/folio/internal/model"
 )
@@ -115,168 +110,6 @@ func clamp(v float64) uint8 {
 	return uint8(v + 0.5)
 }
 
-// ColorCount is a colour seen on a web page and how often.
-type ColorCount struct {
-	Hex   string `json:"hex"`
-	Count int    `json:"count"`
-}
-
-// Evidence is what Folio extracted from a web page; the model sees only
-// this, never the raw HTML. Images are absolute https URLs of logo and icon
-// candidates (the user may pick one; Folio downloads it only then).
-type Evidence struct {
-	URL        string            `json:"url"`
-	Title      string            `json:"title,omitempty"`
-	SiteName   string            `json:"site_name,omitempty"`
-	ThemeColor string            `json:"theme_color,omitempty"`
-	Colors     []ColorCount      `json:"colors"`               // top 12 by frequency
-	Properties map[string]string `json:"properties,omitempty"` // CSS custom properties holding colours
-	Images     []string          `json:"images"`               // ≤ 8 candidates
-	counts     map[string]int
-}
-
-var (
-	hexRE  = regexp.MustCompile(`#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b`)
-	rgbRE  = regexp.MustCompile(`rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})`)
-	propRE = regexp.MustCompile(`(--[A-Za-z0-9_-]{1,64})\s*:\s*([^;}{]{1,64})`)
-)
-
-// normHex returns #RRGGBB for a CSS hex or rgb() colour, "" otherwise.
-func normHex(s string) string {
-	s = strings.TrimSpace(s)
-	if m := hexRE.FindStringSubmatch(s); m != nil && strings.HasPrefix(s, "#") {
-		h := strings.ToUpper(m[1])
-		if len(h) == 3 {
-			h = string([]byte{h[0], h[0], h[1], h[1], h[2], h[2]})
-		}
-		return "#" + h
-	}
-	if m := rgbRE.FindStringSubmatch(s); m != nil {
-		var c [3]int
-		for i := range c {
-			c[i], _ = strconv.Atoi(m[i+1])
-			if c[i] > 255 {
-				return ""
-			}
-		}
-		return fmt.Sprintf("#%02X%02X%02X", c[0], c[1], c[2])
-	}
-	return ""
-}
-
-// AddCSS counts the colours and colour custom properties of a stylesheet.
-func (e *Evidence) AddCSS(css string) {
-	if e.counts == nil {
-		e.counts = map[string]int{}
-	}
-	for _, m := range hexRE.FindAllString(css, 5000) {
-		e.counts[normHex(m)]++
-	}
-	for _, m := range rgbRE.FindAllString(css, 5000) {
-		if h := normHex(m); h != "" {
-			e.counts[h]++
-		}
-	}
-	for _, m := range propRE.FindAllStringSubmatch(css, 500) {
-		if h := normHex(m[2]); h != "" && len(e.Properties) < 40 {
-			if e.Properties == nil {
-				e.Properties = map[string]string{}
-			}
-			e.Properties[m[1]] = h
-		}
-	}
-	e.Colors = e.Colors[:0]
-	for h, n := range e.counts {
-		e.Colors = append(e.Colors, ColorCount{Hex: h, Count: n})
-	}
-	sort.Slice(e.Colors, func(i, j int) bool {
-		if e.Colors[i].Count != e.Colors[j].Count {
-			return e.Colors[i].Count > e.Colors[j].Count
-		}
-		return e.Colors[i].Hex < e.Colors[j].Hex
-	})
-	if len(e.Colors) > 12 {
-		e.Colors = e.Colors[:12]
-	}
-}
-
-// MaxStylesheets bounds the same-origin stylesheets Folio fetches.
-const MaxStylesheets = 3
-
-// ExtractEvidence parses a page: title, theme colour, site name, inline
-// styles, icon and og:image candidates; it returns at most MaxStylesheets
-// same-origin stylesheet URLs to fetch.
-func ExtractEvidence(page []byte, base *url.URL) (*Evidence, []string) {
-	e := &Evidence{URL: base.String(), Colors: []ColorCount{}, Images: []string{}}
-	doc, err := html.Parse(strings.NewReader(string(page)))
-	if err != nil {
-		return e, nil
-	}
-	var sheets []string
-	addImage := func(ref string) {
-		u, err := base.Parse(strings.TrimSpace(ref))
-		if err != nil || u.Scheme != "https" || u.User != nil || len(u.String()) > 2048 || len(e.Images) >= 8 || slices.Contains(e.Images, u.String()) {
-			return
-		}
-		e.Images = append(e.Images, u.String())
-	}
-	attr := func(n *html.Node, k string) string {
-		for _, a := range n.Attr {
-			if strings.EqualFold(a.Key, k) {
-				return a.Val
-			}
-		}
-		return ""
-	}
-	var css strings.Builder
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "title":
-				if n.FirstChild != nil && e.Title == "" {
-					e.Title = Short(strings.TrimSpace(n.FirstChild.Data))
-				}
-			case "meta":
-				name, prop, content := strings.ToLower(attr(n, "name")), strings.ToLower(attr(n, "property")), attr(n, "content")
-				switch {
-				case name == "theme-color":
-					e.ThemeColor = normHex(content)
-				case prop == "og:site_name":
-					e.SiteName = Short(content)
-				case prop == "og:image":
-					addImage(content)
-				}
-			case "link":
-				rels := strings.Fields(strings.ToLower(attr(n, "rel")))
-				href := attr(n, "href")
-				switch {
-				case slices.Contains(rels, "icon") || slices.Contains(rels, "apple-touch-icon"):
-					addImage(href)
-				case slices.Contains(rels, "stylesheet") && len(sheets) < MaxStylesheets:
-					if u, err := base.Parse(href); err == nil && u.Scheme == base.Scheme && u.Host == base.Host {
-						sheets = append(sheets, u.String())
-					}
-				}
-			case "img":
-				if strings.Contains(strings.ToLower(attr(n, "src")+" "+attr(n, "alt")+" "+attr(n, "class")), "logo") {
-					addImage(attr(n, "src"))
-				}
-			case "style":
-				if n.FirstChild != nil && css.Len() < 512<<10 {
-					css.WriteString(n.FirstChild.Data)
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(doc)
-	e.AddCSS(css.String())
-	return e, sheets
-}
-
 // BrandInput is a brand-suggestion request: a logo's colours (and image
 // for vision models) or a web page's evidence.
 type BrandInput struct {
@@ -297,31 +130,49 @@ type BrandProposal struct {
 	LogoIndex int               `json:"logo_index"` // index into Evidence.Images, -1 for none
 }
 
-const brandSystem = `You propose a document brand for Folio (colours and fonts used in PDF and DOCX documents) from evidence Folio extracted: a logo's dominant colours or a website's colours, title and logo candidates.
-Map colours to roles: primary (headings, table headers), secondary (dark accent), accent (highlights), text (body text, dark, high contrast on the background), muted (secondary text, readable), background (page, usually white or near-white). Use only #RRGGBB values; prefer colours from the evidence for primary, secondary and accent. Pick fonts only from the given families (heading, body, mono). Header and footer are short texts such as the organisation name; leave them empty when unknown. logo_index is the index of the best logo among the evidence images, or -1.
-` + dataRules
+// brandColorPattern is a #RRGGBB colour.
+const brandColorPattern = `^#[0-9A-Fa-f]{6}$`
 
-func brandSchema(fonts []string) map[string]any {
-	str := map[string]any{"type": "string"}
-	fontEnum := map[string]any{"type": "string", "enum": fonts}
-	obj := func(req []string, props map[string]any) map[string]any {
-		return map[string]any{"type": "object", "additionalProperties": false, "required": req, "properties": props}
+func brandSystem(images bool) string {
+	s := `You propose a document brand for Folio (colours and fonts used in PDF and DOCX documents) from evidence Folio extracted: a logo's dominant colours or a website's colours, title and logo candidates.
+Map colours to roles: primary (headings, table headers), secondary (dark accent), accent (highlights), text (body text, dark, high contrast on the background), muted (secondary text, readable), background (page, usually white or near-white). Use only #RRGGBB values; prefer colours from the evidence for primary, secondary and accent. Pick fonts only from the given families (heading, body, mono). name is the organisation's name. Header and footer are short texts such as the organisation name; leave them empty when unknown.`
+	if images {
+		s += ` logo_index is the position (from 0) of the best logo among the website's images, or -1 when none of them is a logo.`
 	}
-	roles := []string{"primary", "secondary", "accent", "text", "muted", "background"}
-	cp := map[string]any{}
-	for _, r := range roles {
-		cp[r] = str
-	}
-	return obj([]string{"name", "colors", "fonts", "header", "footer", "logo_index"}, map[string]any{
-		"name": str, "colors": obj(roles, cp),
-		"fonts":  obj([]string{"heading", "body", "mono"}, map[string]any{"heading": fontEnum, "body": fontEnum, "mono": fontEnum}),
-		"header": str, "footer": str, "logo_index": map[string]any{"type": "integer"},
-	})
+	return s + "\n" + dataRules
 }
 
-var colorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+// brandSchema lists name, colors, fonts, header, footer and, when there
+// are candidate images, logo_index restricted to -1 and their indexes.
+func brandSchema(fonts []string, images int) *Schema {
+	font := Enum(fonts...)
+	color := Raw(json.RawMessage(`{"type":"string","pattern":"` + strings.ReplaceAll(brandColorPattern, `\`, `\\`) + `"}`))
+	var colors []Property
+	for _, r := range []string{"primary", "secondary", "accent", "text", "muted", "background"} {
+		colors = append(colors, Prop(r, color))
+	}
+	props := []Property{
+		Prop("name", Str()),
+		Prop("colors", Object(colors...)),
+		Prop("fonts", Object(Prop("heading", font), Prop("body", font), Prop("mono", font))),
+		Prop("header", Str()),
+		Prop("footer", Str()),
+	}
+	if images > 0 {
+		idx := make([]string, 0, images+1)
+		for i := -1; i < images; i++ {
+			idx = append(idx, fmt.Sprint(i))
+		}
+		props = append(props, Prop("logo_index", Raw(json.RawMessage(`{"type":"integer","enum":[`+strings.Join(idx, ",")+`]}`))))
+	}
+	return Object(props...)
+}
 
-func checkBrand(p BrandProposal, fonts []string, images int) []string {
+var colorRE = regexp.MustCompile(brandColorPattern)
+
+// checkBrand lists what the model must fix. logo_index is not checked: an
+// index outside the candidates means no logo (SuggestBrand clamps it).
+func checkBrand(p BrandProposal, fonts []string) []string {
 	var problems []string
 	for role, c := range map[string]string{"primary": p.Colors.Primary, "secondary": p.Colors.Secondary, "accent": p.Colors.Accent,
 		"text": p.Colors.Text, "muted": p.Colors.Muted, "background": p.Colors.Background} {
@@ -334,9 +185,6 @@ func checkBrand(p BrandProposal, fonts []string, images int) []string {
 			problems = append(problems, fmt.Sprintf("fonts.%s must be one of %s", role, strings.Join(fonts, ", ")))
 		}
 	}
-	if p.LogoIndex < -1 || p.LogoIndex >= images {
-		problems = append(problems, fmt.Sprintf("logo_index must be -1 or between 0 and %d", images-1))
-	}
 	if strings.TrimSpace(p.Name) == "" {
 		problems = append(problems, "name is required")
 	}
@@ -345,7 +193,9 @@ func checkBrand(p BrandProposal, fonts []string, images int) []string {
 }
 
 // SuggestBrand asks the model for a brand proposal from the evidence and
-// checks it (one repair round).
+// checks it: a malformed stream is retried once and an unusable answer or
+// bad colours and fonts get one repair round. LogoIndex is -1 unless it
+// names one of the website's candidate images.
 func (c *Client) SuggestBrand(ctx context.Context, in BrandInput, step func(string)) (*BrandProposal, error) {
 	ev := map[string]any{"name_hint": in.NameHint}
 	images := 0
@@ -353,7 +203,7 @@ func (c *Client) SuggestBrand(ctx context.Context, in BrandInput, step func(stri
 		ev["logo_colors"] = in.Swatches
 	}
 	if in.Evidence != nil {
-		ev["website"] = in.Evidence
+		ev["website"] = in.Evidence.ForModel()
 		images = len(in.Evidence.Images)
 	}
 	evJSON, _ := json.Marshal(ev)
@@ -361,32 +211,21 @@ func (c *Client) SuggestBrand(ctx context.Context, in BrandInput, step func(stri
 	if len(in.LogoPNG) > 0 {
 		parts = append(parts, Text("The logo image follows (untrusted data)."), PNG(in.LogoPNG))
 	}
-	msgs := []Message{{Role: "system", Content: brandSystem}, {Role: "user", Content: parts}}
-	req := Request{Messages: msgs, SchemaName: "brand_suggest", Schema: brandSchema(in.Fonts), Strict: true}
+	msgs := []Message{{Role: "system", Content: brandSystem(images > 0)}, {Role: "user", Content: parts}}
+	req := Request{Messages: msgs, SchemaName: "brand_suggest", Schema: brandSchema(in.Fonts, images), Strict: true,
+		MaxTokens: brandTokens, Timeout: brandTimeout}
 	step("asking the model")
-	var p BrandProposal
-	raw, err := c.JSON(ctx, req, &p)
-	if err != nil && !errors.Is(err, ErrNotJSON) {
+	p, problems, err := askChecked(ctx, c, req, "Your previous answer has these problems; answer again with all of them fixed:", func(p *BrandProposal) []string {
+		return checkBrand(*p, in.Fonts)
+	}, step)
+	if err != nil {
 		return nil, err
 	}
-	problems := []string{"the answer was not the expected JSON object"}
-	if err == nil {
-		problems = checkBrand(p, in.Fonts, images)
-	}
 	if len(problems) > 0 {
-		step("asking the model to fix its answer")
-		req.Messages = append(msgs, Message{Role: "assistant", Content: raw},
-			Message{Role: "user", Content: "Your answer has these problems; answer again with all of them fixed:\n- " + strings.Join(problems, "\n- ")})
-		p = BrandProposal{}
-		if _, err := c.JSON(ctx, req, &p); err != nil {
-			if errors.Is(err, ErrNotJSON) {
-				return nil, &model.Error{Code: model.ErrUnavailable, Message: "the assistant could not produce a usable brand; try again"}
-			}
-			return nil, err
-		}
-		if problems = checkBrand(p, in.Fonts, images); len(problems) > 0 {
-			return nil, &model.Error{Code: model.ErrUnavailable, Message: "the assistant could not produce a usable brand: " + strings.Join(problems, "; ")}
-		}
+		return nil, gaveUp("brand", problems)
 	}
-	return &p, nil
+	if p.LogoIndex < 0 || p.LogoIndex >= images {
+		p.LogoIndex = -1
+	}
+	return p, nil
 }

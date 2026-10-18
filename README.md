@@ -179,7 +179,7 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_UI_PREVIEW_CONCURRENCY` | `1` | render slots for web UI previews and example-file conversion (separate from `FOLIO_RENDER_CONCURRENCY`) |
 | `FOLIO_TRUSTED_PROXIES` | private and loopback ranges | comma-separated CIDRs whose `X-Forwarded-For` is trusted for login rate limiting; `none` trusts no proxy |
 | `FOLIO_ACTIVITY_RETENTION` | `720h` | activity feed entries older than this are deleted |
-| `FOLIO_AI_MODEL` | `FOLIO_REVIEW_MODEL` | OpenRouter model for the web UI assistants (vision-capable for PDF examples and logos) |
+| `FOLIO_AI_MODEL` | `google/gemini-3.1-flash-lite` | OpenRouter model for the web UI assistants (vision-capable for PDF examples and logos, fast structured output) |
 | `FOLIO_AI_DAILY_CALLS` | `200` | web UI assistant jobs per UTC day for the whole instance |
 | `FOLIO_AI_SESSION_CALLS` | `30` | web UI assistant jobs per signed-in session per hour |
 | `FOLIO_PANDOC`, `FOLIO_TYPST` | found on `PATH` | paths of the pandoc and typst binaries (the image ships both) |
@@ -308,8 +308,9 @@ there are no user accounts.
 ### Assistants
 
 With `FOLIO_OPENROUTER_API_KEY` set, the UI offers three assistants (model
-`FOLIO_AI_MODEL`, by default the reviewer's model; if drafts are weak, pick
-a stronger one):
+`FOLIO_AI_MODEL`, by default `google/gemini-3.1-flash-lite`, chosen because
+it returns structured answers in a few seconds; if drafts are weak, pick a
+stronger one that also does):
 
 - **Draft a template** from a description and, optionally, an example
   (Markdown, Word or PDF). The draft is checked and its sample rendered
@@ -329,6 +330,13 @@ is sent to OpenRouter with data collection denied, only when you ask.
 Limits: `FOLIO_AI_DAILY_CALLS` per day for the instance and
 `FOLIO_AI_SESSION_CALLS` per hour for each sign-in; at most one request runs
 per session and four per instance.
+
+Every model call (assistants and reviewer) asks OpenRouter for the fastest
+provider, caps the answer length and streams it: an answer that degenerates
+into blank output, or stops producing anything for 15 seconds, is cut off
+and reported as a malformed answer instead of waiting for the time limit.
+Each call is logged as an `ai call` record with the model, provider,
+latency, token counts and outcome; never the content or the key.
 
 ### Security
 
@@ -699,6 +707,7 @@ make run          # serve locally with a throwaway token and ./data
 make ui           # build the web UI into internal/webui/dist (Node 24)
 make ui-check     # svelte-check and the UI unit tests
 make dev-ui       # Vite dev server on :5173, API proxied to make run
+make ai-smoke     # manual: run the web assistants against a real model
 ```
 
 The web UI lives in `web/` (Svelte 5, TypeScript, Vite). `make ui` writes
@@ -708,6 +717,15 @@ make run` in one terminal and `make dev-ui` in another, then open
 `http://localhost:5173/ui/`. The end-to-end tests
 (`scripts/ui-e2e.sh <image>`) run Playwright against a container with a
 stub OpenRouter.
+
+`FOLIO_OPENROUTER_API_KEY=… make ai-smoke [URL=https://example.com]` (or
+`scripts/ai-smoke.sh [url]`) is a manual check, not part of CI, that calls the
+real model and costs a few cents. It starts a throwaway local Folio, signs in
+to the UI API and runs document-plan (with and without `template_id`),
+template-draft and brand-suggest (the web page and a generated PNG logo). It
+prints state, seconds and any error per assistant, and exits non-zero if one
+fails. `FOLIO_AI_MODEL` selects the model; the key is read from the
+environment only and never printed or stored.
 
 Tests that render need the pinned pandoc and typst: put them on `PATH` or
 set `FOLIO_PANDOC` and `FOLIO_TYPST`. Without them those tests are skipped
