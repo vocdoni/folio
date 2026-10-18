@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo deve
 IMAGE   ?= folio:dev
 LDFLAGS := -s -w -X main.buildVersion=$(VERSION)
 
-.PHONY: build test test-race lint generate ui ui-check dev-ui docker docker-smoke run clean
+.PHONY: build test test-race lint generate ui ui-check dev-ui docker docker-smoke ai-smoke run clean
 
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o bin/folio ./cmd/folio
@@ -43,6 +43,11 @@ docker:
 
 docker-smoke: docker
 	scripts/docker-smoke.sh $(IMAGE)
+
+# Manual, not CI: runs the web assistants against the real OpenRouter model.
+# FOLIO_OPENROUTER_API_KEY=... make ai-smoke [URL=https://example.com]
+ai-smoke:
+	scripts/ai-smoke.sh $(URL)
 
 # A local instance with a throwaway token printed at startup and data in ./data.
 run: build

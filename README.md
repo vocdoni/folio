@@ -707,6 +707,7 @@ make run          # serve locally with a throwaway token and ./data
 make ui           # build the web UI into internal/webui/dist (Node 24)
 make ui-check     # svelte-check and the UI unit tests
 make dev-ui       # Vite dev server on :5173, API proxied to make run
+make ai-smoke     # manual: run the web assistants against a real model
 ```
 
 The web UI lives in `web/` (Svelte 5, TypeScript, Vite). `make ui` writes
@@ -716,6 +717,15 @@ make run` in one terminal and `make dev-ui` in another, then open
 `http://localhost:5173/ui/`. The end-to-end tests
 (`scripts/ui-e2e.sh <image>`) run Playwright against a container with a
 stub OpenRouter.
+
+`FOLIO_OPENROUTER_API_KEY=… make ai-smoke [URL=https://example.com]` (or
+`scripts/ai-smoke.sh [url]`) is a manual check, not part of CI, that calls the
+real model and costs a few cents. It starts a throwaway local Folio, signs in
+to the UI API and runs document-plan (with and without `template_id`),
+template-draft and brand-suggest (the web page and a generated PNG logo). It
+prints state, seconds and any error per assistant, and exits non-zero if one
+fails. `FOLIO_AI_MODEL` selects the model; the key is read from the
+environment only and never printed or stored.
 
 Tests that render need the pinned pandoc and typst: put them on `PATH` or
 set `FOLIO_PANDOC` and `FOLIO_TYPST`. Without them those tests are skipped
