@@ -1,0 +1,255 @@
+{
+  "id": "sow",
+  "name": "Statement of work",
+  "description": "Statement of work with objectives, scope, deliverables, timeline with payments and fees.",
+  "category": "sow",
+  "brand_id": "example",
+  "languages": [
+    "en",
+    "es",
+    "ca"
+  ],
+  "layout": {
+    "base": "proposal",
+    "typst": null,
+    "options": {
+      "cover": true,
+      "toc": true,
+      "page_size": "a4",
+      "heading_numbering": true
+    }
+  },
+  "metadata_schema": {
+    "type": "object",
+    "required": [
+      "client"
+    ],
+    "properties": {
+      "client": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "data_schema": {
+    "type": "object",
+    "required": [
+      "budget"
+    ],
+    "properties": {
+      "budget": {
+        "$ref": "folio:component/budget"
+      },
+      "milestones": {
+        "$ref": "folio:component/milestones"
+      },
+      "deliverables": {
+        "$ref": "folio:component/deliverables"
+      },
+      "signatures": {
+        "$ref": "folio:component/signatures"
+      }
+    }
+  },
+  "sections": [
+    {
+      "title": "Background",
+      "aliases": [
+        "Antecedentes",
+        "Antecedents"
+      ]
+    },
+    {
+      "title": "Objectives",
+      "required": true,
+      "aliases": [
+        "Objetivos",
+        "Objectius"
+      ]
+    },
+    {
+      "title": "Scope of work",
+      "required": true,
+      "aliases": [
+        "Alcance del trabajo",
+        "Abast del treball"
+      ]
+    },
+    {
+      "title": "Out of scope",
+      "aliases": [
+        "Fuera de alcance",
+        "Fora d'abast"
+      ]
+    },
+    {
+      "title": "Deliverables",
+      "required": true,
+      "aliases": [
+        "Entregables",
+        "Lliurables"
+      ],
+      "component": "deliverables"
+    },
+    {
+      "title": "Timeline",
+      "required": true,
+      "aliases": [
+        "Calendario",
+        "Calendari"
+      ],
+      "component": "milestones"
+    },
+    {
+      "title": "Fees",
+      "required": true,
+      "aliases": [
+        "Honorarios",
+        "Honoraris"
+      ],
+      "component": "budget"
+    },
+    {
+      "title": "Acceptance",
+      "aliases": [
+        "Aceptación",
+        "Acceptació"
+      ],
+      "component": "signatures"
+    },
+    {
+      "title": "Change control",
+      "aliases": [
+        "Control de cambios",
+        "Control de canvis"
+      ]
+    }
+  ],
+  "components": [
+    "budget",
+    "milestones",
+    "deliverables",
+    "signatures",
+    "info"
+  ],
+  "strict": false,
+  "body_skeleton": "# Objectives\n\n- TODO\n\n::: folio-info\n:::\n\n# Scope of work\n\n- TODO\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Timeline\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Fees\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+  "sample": {
+    "markdown": "# Background\n\nACME Corp operates a fleet of delivery vehicles and wants to replace its spreadsheet-based route planning with a managed planning tool. This statement of work defines what Example Co will deliver under the master services agreement between both parties.\n\n::: folio-info\n:::\n\n# Objectives\n\n- Cut the time spent planning daily routes from three hours to under thirty minutes\n- Reduce average kilometres driven per delivery by at least 8%\n- Give dispatchers a single view of all vehicles and orders\n\n# Scope of work\n\nExample Co will:\n\n1. Analyse the current planning process and data sources\n2. Configure and integrate the planning tool with ACME's order system\n3. Train twelve dispatchers and two administrators\n4. Provide four weeks of hypercare after go-live\n\n# Out of scope\n\n- Hardware, such as in-vehicle tablets\n- Changes to ACME's order management system beyond the agreed integration\n- Driver mobile application\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Timeline\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Fees\n\n::: folio-budget\n:::\n\n# Acceptance\n\nEach deliverable is accepted when it meets its acceptance criterion or when ACME has not reported defects within ten working days of delivery.\n\n::: folio-signatures\n:::\n\n# Change control\n\nEither party may request a change in writing. Example Co will estimate its effect on scope, schedule and fees within five working days. No change takes effect until both parties sign the change request.\n",
+    "metadata": {
+      "title": "Route planning statement of work",
+      "date": "2026-10-18",
+      "language": "en",
+      "client": "ACME Corp",
+      "project": "Route planning",
+      "reference": "SOW-2026-019",
+      "author": "Jane Doe",
+      "version_label": "v1.0"
+    },
+    "data": {
+      "budget": {
+        "currency": "EUR",
+        "tax_rate": "21",
+        "items": [
+          {
+            "description": "Process analysis",
+            "quantity": "5",
+            "unit": "day",
+            "unit_price": "700"
+          },
+          {
+            "description": "Configuration and integration",
+            "quantity": "18",
+            "unit": "day",
+            "unit_price": "700"
+          },
+          {
+            "description": "Training sessions",
+            "quantity": "3",
+            "unit": "session",
+            "unit_price": "900"
+          },
+          {
+            "description": "Hypercare support",
+            "quantity": "4",
+            "unit": "week",
+            "unit_price": "1200"
+          }
+        ],
+        "notes": "Fees are fixed for the scope above."
+      },
+      "milestones": [
+        {
+          "name": "Analysis complete",
+          "date": "2026-11-27",
+          "deliverables": [
+            "D1"
+          ],
+          "payment_pct": "25"
+        },
+        {
+          "name": "Integration live in staging",
+          "date": "2027-01-15",
+          "deliverables": [
+            "D2"
+          ],
+          "payment_pct": "35"
+        },
+        {
+          "name": "Training delivered and go-live",
+          "date": "2027-02-12",
+          "deliverables": [
+            "D3"
+          ],
+          "payment_pct": "25"
+        },
+        {
+          "name": "End of hypercare",
+          "date": "2027-03-12",
+          "deliverables": [
+            "D4"
+          ],
+          "payment_pct": "15"
+        }
+      ],
+      "deliverables": [
+        {
+          "id": "D1",
+          "name": "Process analysis report",
+          "due": "2026-11-27",
+          "acceptance": "Reviewed by the ACME operations lead"
+        },
+        {
+          "id": "D2",
+          "name": "Integrated planning tool",
+          "due": "2027-01-15",
+          "acceptance": "Orders flow from the order system to staging"
+        },
+        {
+          "id": "D3",
+          "name": "Trained dispatch team",
+          "due": "2027-02-12",
+          "acceptance": "All fourteen users complete the training"
+        },
+        {
+          "id": "D4",
+          "name": "Hypercare closure report",
+          "due": "2027-03-12",
+          "acceptance": "No open critical incidents"
+        }
+      ],
+      "signatures": [
+        {
+          "name": "Jane Doe",
+          "role": "Managing Director",
+          "organization": "Example Co"
+        },
+        {
+          "name": "John Smith",
+          "role": "Head of Operations",
+          "organization": "ACME Corp"
+        }
+      ]
+    }
+  }
+}

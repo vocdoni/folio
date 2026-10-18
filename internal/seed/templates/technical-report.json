@@ -1,0 +1,106 @@
+{
+  "id": "technical-report",
+  "name": "Technical report",
+  "description": "Technical report with findings and recommendations, supporting math, tables and code.",
+  "category": "report",
+  "brand_id": "example",
+  "languages": [
+    "en",
+    "es",
+    "ca"
+  ],
+  "layout": {
+    "base": "report",
+    "typst": null,
+    "options": {
+      "cover": true,
+      "toc": true,
+      "page_size": "a4",
+      "heading_numbering": true
+    }
+  },
+  "metadata_schema": {
+    "type": "object",
+    "required": [
+      "project"
+    ],
+    "properties": {
+      "project": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "data_schema": {
+    "type": "object",
+    "properties": {}
+  },
+  "sections": [
+    {
+      "title": "Summary",
+      "required": true,
+      "aliases": [
+        "Resumen",
+        "Resum"
+      ],
+      "hint": "Key findings and recommendations in one paragraph."
+    },
+    {
+      "title": "Background",
+      "aliases": [
+        "Antecedentes",
+        "Antecedents"
+      ]
+    },
+    {
+      "title": "Method",
+      "aliases": [
+        "Método",
+        "Mètode"
+      ]
+    },
+    {
+      "title": "Findings",
+      "required": true,
+      "aliases": [
+        "Resultados",
+        "Resultats",
+        "Hallazgos"
+      ]
+    },
+    {
+      "title": "Recommendations",
+      "required": true,
+      "aliases": [
+        "Recomendaciones",
+        "Recomanacions"
+      ]
+    },
+    {
+      "title": "Appendix",
+      "aliases": [
+        "Apéndice",
+        "Annex"
+      ]
+    }
+  ],
+  "components": [
+    "info"
+  ],
+  "strict": false,
+  "body_skeleton": "# Summary\n\nTODO\n\n::: folio-info\n:::\n\n# Findings\n\nTODO\n\n# Recommendations\n\n1. TODO\n",
+  "sample": {
+    "markdown": "# Summary\n\nWe profiled the ACME order API under production-like load and found that median latency is well within target, but the 99th percentile degrades sharply above 800 requests per second. The cause is lock contention in the inventory reservation step. We recommend batching reservations and adding a read replica for catalogue queries.\n\n::: folio-info\n:::\n\n# Background\n\nThe order API handles checkout for the ACME web shop. After the autumn campaign, support reported slow responses during peaks.[^1] This report documents the investigation and its outcome.\n\n[^1]: Peak traffic reached 1,150 requests per second on 14 October 2026.\n\n# Method\n\nWe replayed one hour of anonymised production traffic against a staging environment with identical sizing. Load was increased in steps of 100 requests per second. For each step we recorded latency percentiles and database lock wait time.\n\nLatency percentiles follow the nearest-rank definition: the value at rank $r = \\lceil p \\cdot n \\rceil$ in the sorted list of $n$ samples. Throughput saturates when the utilisation $\\rho$ approaches one:\n\n$$\\rho = \\frac{\\lambda}{\\mu}$$\n\nwhere $\\lambda$ is the arrival rate and $\\mu$ the service rate.\n\n# Findings\n\nResults for selected load steps:\n\n| Load (req/s) | p50 (ms) | p99 (ms) | Errors |\n|-------------:|---------:|---------:|-------:|\n| 400 | 42 | 118 | 0.0% |\n| 800 | 55 | 410 | 0.1% |\n| 1200 | 91 | 2300 | 3.4% |\n\nLock wait time on the `stock` table explains 78% of the p99 latency at 1200 requests per second. The reservation query below holds a row lock for the whole transaction:\n\n```sql\nBEGIN;\nSELECT quantity FROM stock WHERE sku = $1 FOR UPDATE;\nUPDATE stock SET quantity = quantity - $2 WHERE sku = $1;\nCOMMIT;\n```\n\n# Recommendations\n\n1. Replace the per-item reservation with one batched statement per order.\n2. Serve catalogue reads from a read replica.\n3. Repeat the load test after the change and set an alert at p99 above 500 ms.\n\n# Appendix\n\nTest environment: four application nodes with 4 vCPU each and a single PostgreSQL primary with 16 vCPU. The raw measurements are available on request.\n",
+    "metadata": {
+      "title": "Order API performance report",
+      "date": "2026-10-18",
+      "language": "en",
+      "client": "ACME Corp",
+      "project": "Order API",
+      "reference": "EX-TR-2026-007",
+      "author": "Jane Doe",
+      "version_label": "v1.0"
+    },
+    "data": {}
+  }
+}
