@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Mode selects which variables are mandatory.
@@ -33,6 +35,36 @@ func (t Token) String() string { return t.Name + ":<redacted>" }
 
 // LogValue keeps tokens out of slog output.
 func (t Token) LogValue() slog.Value { return slog.StringValue(t.String()) }
+
+// Secret is a configured secret (the web UI password). It never prints.
+type Secret string
+
+// String redacts the secret.
+func (Secret) String() string { return "<redacted>" }
+
+// GoString redacts the secret in %#v.
+func (Secret) GoString() string { return "<redacted>" }
+
+// LogValue keeps the secret out of slog output.
+func (Secret) LogValue() slog.Value { return slog.StringValue("<redacted>") }
+
+// MinUIPasswordLen is the minimum length of FOLIO_UI_PASSWORD, in characters.
+const MinUIPasswordLen = 12
+
+// DefaultTrustedProxies are the private and loopback ranges whose
+// X-Forwarded-For header is trusted for login rate limiting.
+var DefaultTrustedProxies = []netip.Prefix{
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("fc00::/7"),
+}
+
+// DefaultOpenRouterBaseURL is the OpenRouter API root.
+const DefaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
 
 // Config is the validated configuration (documented defaults).
 type Config struct {
@@ -61,9 +93,22 @@ type Config struct {
 	LogLevel           slog.Level
 	LogFormat          string // json | text
 	OpenRouterAPIKey   string
+	OpenRouterBaseURL  string
 	ReviewModel        string
 	ReviewMaxPages     int
+	// Web UI (disabled when UIPassword is empty).
+	UIPassword           Secret
+	UISessionTTL         time.Duration
+	UIPreviewConcurrency int
+	TrustedProxies       []netip.Prefix
+	ActivityRetention    time.Duration
+	AIModel              string
+	AIDailyCalls         int
+	AISessionCalls       int // per session per hour
 }
+
+// UIEnabled reports whether the web UI is served (FOLIO_UI_PASSWORD is set).
+func (c *Config) UIEnabled() bool { return c.UIPassword != "" }
 
 var (
 	nameRE  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
@@ -166,6 +211,32 @@ func Load(getenv func(string) (string, bool), mode Mode) (*Config, error) {
 	c.OpenRouterAPIKey = str("FOLIO_OPENROUTER_API_KEY", "")
 	c.ReviewModel = str("FOLIO_REVIEW_MODEL", "google/gemma-4-31b-it")
 	c.ReviewMaxPages = num("FOLIO_REVIEW_MAX_PAGES", 20, 1)
+	c.OpenRouterBaseURL = strings.TrimRight(str("FOLIO_OPENROUTER_BASE_URL", DefaultOpenRouterBaseURL), "/")
+	if u, err := url.Parse(c.OpenRouterBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		errs = append(errs, errors.New("FOLIO_OPENROUTER_BASE_URL: must be an absolute http(s) URL without credentials (test and proxy use only)"))
+	}
+	if pw, ok := getenv("FOLIO_UI_PASSWORD"); ok && pw != "" { // not trimmed: spaces are part of a password
+		if utf8.RuneCountInString(pw) < MinUIPasswordLen || len(pw) > 1024 {
+			errs = append(errs, fmt.Errorf("FOLIO_UI_PASSWORD: must be %d to 1024 characters (leave it unset to disable the web UI)", MinUIPasswordLen))
+		} else {
+			c.UIPassword = Secret(pw)
+		}
+	}
+	c.UISessionTTL = dur("FOLIO_UI_SESSION_TTL", 12*time.Hour, false)
+	c.UIPreviewConcurrency = num("FOLIO_UI_PREVIEW_CONCURRENCY", 1, 1)
+	c.ActivityRetention = dur("FOLIO_ACTIVITY_RETENTION", 720*time.Hour, false)
+	c.AIModel = str("FOLIO_AI_MODEL", c.ReviewModel)
+	c.AIDailyCalls = num("FOLIO_AI_DAILY_CALLS", 200, 0)
+	c.AISessionCalls = num("FOLIO_AI_SESSION_CALLS", 30, 0)
+	c.TrustedProxies = DefaultTrustedProxies
+	if v := str("FOLIO_TRUSTED_PROXIES", ""); v != "" {
+		ps, err := ParsePrefixes(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("FOLIO_TRUSTED_PROXIES: %w", err))
+		} else {
+			c.TrustedProxies = ps
+		}
+	}
 	if c.BlobGCGrace <= 3*c.RenderTimeout {
 		errs = append(errs, fmt.Errorf("FOLIO_BLOB_GC_GRACE (%s) must exceed 3 × FOLIO_RENDER_TIMEOUT (%s)", c.BlobGCGrace, 3*c.RenderTimeout))
 	}
@@ -213,6 +284,31 @@ func (c *Config) loadTokens(single, multi string) []error {
 		errs = append(errs, errors.New("no token configured: set FOLIO_TOKEN or FOLIO_TOKENS (or FOLIO_INSECURE_NO_AUTH=true for local development only)"))
 	}
 	return errs
+}
+
+// ParsePrefixes parses a comma-separated list of CIDR prefixes or single
+// addresses ("10.0.0.0/8, 2001:db8::1"); "none" means an empty list.
+func ParsePrefixes(s string) ([]netip.Prefix, error) {
+	if strings.TrimSpace(s) == "none" {
+		return []netip.Prefix{}, nil
+	}
+	var out []netip.Prefix
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(part); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(part)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a CIDR prefix or an IP address", part)
+		}
+		out = append(out, netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()))
+	}
+	return out, nil
 }
 
 // ParseSize parses "1GiB", "16MiB", "512KiB" or a plain byte count.
