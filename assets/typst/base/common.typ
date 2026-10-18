@@ -66,7 +66,11 @@
         table.cell(..g, strong(b))
       } else { strong(x) }))
     } else { c })
-    table(..f, ..kids, stroke: (x, y) => if not has-header { none } else if y == 0 {
+    // Pandoc centres user tables (align(center)[#table(..)]); cells with auto
+    // alignment would inherit that, so auto becomes left.
+    let al = f.remove("align", default: auto)
+    al = if type(al) == array { al.map(a => if a == auto { left } else { a }) } else if al == auto { left } else { al }
+    table(..f, ..kids, align: al, stroke: (x, y) => if not has-header { none } else if y == 0 {
       (bottom: 0.7pt + primary)
     } else { (bottom: 0.3pt + muted.lighten(60%)) })
   }

@@ -275,8 +275,10 @@ func typstWarnings(job *Job, stderr []byte) []string {
 }
 
 // CompileTypst compiles main.typ to out.pdf and to PNG pages at PreviewPPI.
-// It returns the PDF, the PNG pages in order and typst warnings.
-func (e *Engine) CompileTypst(ctx context.Context, job *Job, epoch int64) ([]byte, [][]byte, []string, error) {
+// It returns the PDF, the PNG pages in order and typst warnings. With maxPages
+// > 0 the PNG export stops after maxPages+1 pages, so an oversized document is
+// not rasterised in full before the page limit refuses it.
+func (e *Engine) CompileTypst(ctx context.Context, job *Job, epoch int64, maxPages int) ([]byte, [][]byte, []string, error) {
 	if err := job.MkdirAll("pkgcache"); err != nil {
 		return nil, nil, nil, err
 	}
@@ -292,7 +294,11 @@ func (e *Engine) CompileTypst(ctx context.Context, job *Job, epoch int64) ([]byt
 	if err != nil {
 		return nil, nil, warnings, err
 	}
-	args := append(e.typstArgs(job, epoch), "--ppi", strconv.Itoa(PreviewPPI), "main.typ", "pages/page-{0p}.png")
+	args := append(e.typstArgs(job, epoch), "--ppi", strconv.Itoa(PreviewPPI))
+	if maxPages > 0 {
+		args = append(args, "--pages", "1-"+strconv.Itoa(maxPages+1)) // one extra so the PDF check still reports the overflow
+	}
+	args = append(args, "main.typ", "pages/page-{0p}.png")
 	if _, err := e.run(ctx, job, e.cfg.Typst, nil, args...); err != nil {
 		return nil, nil, warnings, err
 	}

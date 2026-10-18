@@ -120,7 +120,7 @@ func TestEngineMarkdownToPDFAndDOCX(t *testing.T) {
 		t.Fatalf("typst body: %v", err)
 	}
 	writeInputs(t, e, job)
-	pdf, pages, tw, err := e.CompileTypst(ctx, job, 1792281600)
+	pdf, pages, tw, err := e.CompileTypst(ctx, job, 1792281600, 0)
 	if err != nil {
 		t.Fatalf("typst: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestSecurityPreviewImports(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeInputs(t, e, job)
-	_, _, _, err = e.CompileTypst(context.Background(), job, 0)
+	_, _, _, err = e.CompileTypst(context.Background(), job, 0, 0)
 	var me *model.Error
 	if !errors.As(err, &me) || me.Code != model.ErrRenderFailed {
 		t.Fatalf("err = %v, want render_failed", err)
@@ -272,13 +272,32 @@ func TestSecurityTypstInfiniteLoopKilledAtTimeout(t *testing.T) {
 	}
 	writeInputs(t, e, job)
 	start := time.Now()
-	_, _, _, err := e.CompileTypst(context.Background(), job, 0)
+	_, _, _, err := e.CompileTypst(context.Background(), job, 0, 0)
 	var me *model.Error
 	if !errors.As(err, &me) || me.Code != model.ErrTimeout {
 		t.Fatalf("err = %v, want timeout", err)
 	}
 	if d := time.Since(start); d > 6*time.Second {
 		t.Fatalf("took %v", d)
+	}
+}
+
+// The PNG export stops one page past the limit: an oversized document is not
+// rasterised in full before the PDF check refuses it.
+func TestCompileTypstPNGStopsAtPageLimit(t *testing.T) {
+	e := testEngine(t)
+	job, _ := e.NewJob()
+	defer job.Remove()
+	if err := job.WriteFile("body.typ", []byte("#for i in range(12) [Page #i #pagebreak(weak: true)]\n")); err != nil {
+		t.Fatal(err)
+	}
+	writeInputs(t, e, job)
+	_, pages, _, err := e.CompileTypst(context.Background(), job, 0, 3)
+	if err != nil {
+		t.Fatalf("typst: %v", err)
+	}
+	if len(pages) != 4 {
+		t.Fatalf("pages = %d, want 4 (limit 3 plus one)", len(pages))
 	}
 }
 
@@ -349,7 +368,7 @@ func TestVendoredPackageMechanism(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeInputs(t, e, job)
-	if _, _, _, err := e.CompileTypst(context.Background(), job, 0); err != nil {
+	if _, _, _, err := e.CompileTypst(context.Background(), job, 0, 0); err != nil {
 		t.Fatalf("vendored package did not compile: %v", err)
 	}
 }

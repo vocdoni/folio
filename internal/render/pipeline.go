@@ -327,7 +327,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	if err := p.cfg.Engine.WriteTypstInputs(job, TypstInputs{LayoutSource: layout, Meta: metaJSON, Brand: brandJSON, Labels: labelsJSON, Options: optsJSON}); err != nil {
 		return nil, err
 	}
-	pdf, pages, twarn, err := p.cfg.Engine.CompileTypst(ctx, job, epoch)
+	pdf, pages, twarn, err := p.cfg.Engine.CompileTypst(ctx, job, epoch, p.cfg.MaxPages)
 	if err != nil {
 		return nil, err
 	}
