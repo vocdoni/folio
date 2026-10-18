@@ -69,10 +69,24 @@ func TestConnectionRecordsRevealWithoutToken(t *testing.T) {
 }
 
 func TestConnectionWithoutTokensWhenAuthIsOff(t *testing.T) {
-	f := newFixture(t, func(o *Options) { o.Config.InsecureNoAuth = true })
+	f := newFixture(t, func(o *Options) { o.Config.InsecureNoAuth = true; o.Config.Tokens = nil })
 	f.login()
 	w := f.do(http.MethodGet, "/ui/api/connection", nil, nil)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"tokens":[]`) {
+		t.Fatalf("%d %s", w.Code, w.Body)
+	}
+}
+
+// Configured tokens guard /mcp even with FOLIO_INSECURE_NO_AUTH set, so the
+// UI must still show them.
+func TestConnectionListsTokensEvenWithInsecureFlag(t *testing.T) {
+	f := newFixture(t, func(o *Options) {
+		o.Config.InsecureNoAuth = true
+		o.Config.Tokens = []config.Token{{Name: "alice", Value: connTokA}}
+	})
+	f.login()
+	w := f.do(http.MethodGet, "/ui/api/connection", nil, nil)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), connTokA) {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }

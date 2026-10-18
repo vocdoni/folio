@@ -217,7 +217,9 @@ Inside a Claude Code session you can instead run `/plugin marketplace add vocdon
 and `/plugin install folio@folio`, which prompts for the two values.
 
 With the web UI enabled, Settings shows the address and the token (hidden
-until you press Show) and fills every snippet below in for you.
+until you press Show) and fills every snippet below in for you. The snippets
+here read the token from a `FOLIO_TOKEN` environment variable; the Settings
+versions contain the token itself. Both work.
 
 ### Codex
 

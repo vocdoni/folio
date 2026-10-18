@@ -107,11 +107,11 @@
         {/if}
         <div class="tokenrow">
           <Copy text={current.token} display={shown ? current.token : MASK} label={tokens.length > 1 ? `token ${current.name}` : 'token'} />
-          <button class="btn small" aria-pressed={shown} onclick={() => (shown = !shown)}>
+          <button class="btn small" aria-label="Show token" aria-pressed={shown} onclick={() => (shown = !shown)}>
             <Icon name={shown ? 'hide' : 'show'} />{shown ? 'Hide' : 'Show'}
           </button>
         </div>
-        <p class="note warn">Anyone with this token can use Folio as you. Keep it out of shared repositories.</p>
+        <p class="note warn">Anyone with this token can use Folio as you. Keep it out of shared repositories, and note that pasted commands stay in your shell history.</p>
       {/if}
 
       <h3>Claude Code</h3>

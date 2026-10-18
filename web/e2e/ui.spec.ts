@@ -326,8 +326,8 @@ test('Settings reveals and copies the token and shows user-wide installs @mobile
   expect(await clipboard()).toBe(token);
 
   // Show fills in the snippets; Hide masks them again.
-  await page.getByRole('button', { name: 'Show' }).click();
-  await expect(page.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Show token' }).click();
+  await expect(page.getByRole('button', { name: 'Show token' })).toHaveAttribute('aria-pressed', 'true');
   await expect(cursor).toContainText(token);
   await expect(plugin).toContainText(`--config folio_token='${token}'`);
   await page.getByRole('button', { name: 'Copy Claude Code install command' }).click();
@@ -336,10 +336,11 @@ test('Settings reveals and copies the token and shows user-wide installs @mobile
   expect(await clipboard()).toContain(`"Authorization": "Bearer ${token}"`);
   await page.getByRole('button', { name: 'Copy Codex configuration' }).click();
   expect(await clipboard()).toContain(`Bearer ${token}`);
-  await page.getByRole('button', { name: 'Hide' }).click();
+  await page.getByRole('button', { name: 'Show token' }).click();
+  await expect(page.getByRole('button', { name: 'Show token' })).toHaveAttribute('aria-pressed', 'false');
   await expect(cursor).not.toContainText(token);
 
-  await expect(page.getByText('Anyone with this token can use Folio as you. Keep it out of shared repositories.')).toBeVisible();
+  await expect(page.getByText('Anyone with this token can use Folio as you. Keep it out of shared repositories, and note that pasted commands stay in your shell history.')).toBeVisible();
   await expect(page.getByLabel('Codex skill install command', { exact: true })).toContainText('/skills/folio/SKILL.md -o ~/.codex/skills/folio/SKILL.md');
   await expect(page.getByRole('heading', { name: 'Things to ask your agent', level: 2 })).toBeVisible();
   await axe(page, 'settings connect');

@@ -20,7 +20,8 @@ type ConnectionToken struct {
 }
 
 // ConnectionOut is GET /ui/api/connection: what an agent needs to connect.
-// Tokens is empty when the instance runs without authentication.
+// Tokens is empty when no token is configured (FOLIO_INSECURE_NO_AUTH);
+// configured tokens always guard /mcp, so they are always listed.
 type ConnectionOut struct {
 	MCPURL   string            `json:"mcp_url"`
 	Tokens   []ConnectionToken `json:"tokens"`
@@ -33,10 +34,8 @@ type ConnectionOut struct {
 func (s *Server) handleConnection(w http.ResponseWriter, _ *http.Request) {
 	base := strings.TrimRight(s.o.Config.PublicURL, "/")
 	out := ConnectionOut{MCPURL: base + "/mcp", SkillURL: base + "/skills/folio/SKILL.md", Tokens: []ConnectionToken{}}
-	if !s.o.Config.InsecureNoAuth {
-		for _, t := range s.o.Config.Tokens {
-			out.Tokens = append(out.Tokens, ConnectionToken{Name: t.Name, Token: t.Value})
-		}
+	for _, t := range s.o.Config.Tokens {
+		out.Tokens = append(out.Tokens, ConnectionToken{Name: t.Name, Token: t.Value})
 	}
 	if s.o.Activity != nil {
 		s.o.Activity.Record(activity.Row{TS: s.o.Now(), Source: activity.SourceUI, Actor: Actor, Action: "ui.connection.reveal",

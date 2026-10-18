@@ -10,7 +10,6 @@
 .env.*
 *-api-key.txt
 docs
-skills
 data
 bin
 dist

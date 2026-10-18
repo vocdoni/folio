@@ -26,8 +26,8 @@ claude plugin install folio --marketplace vocdoni/folio --scope user \
 ```
 
 (Inside a session, `/plugin marketplace add vocdoni/folio` and
-`/plugin install folio@folio` ask for the same two values.) The token is
-stored in the operating system's keychain. The Folio web UI
+`/plugin install folio@folio` ask for the same two values.) Claude Code
+keeps the token with its other credentials. The Folio web UI
 (Settings, Connect your agents) shows the address, the token and the setup
 for other agents.
 
