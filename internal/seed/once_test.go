@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,5 +225,27 @@ func TestApplyUpgradeDoesNotSeedAMarkedDatabase(t *testing.T) {
 	}
 	if v := meta(t, db, VersionKey); v != "2" {
 		t.Fatalf("seed_version = %q", v)
+	}
+}
+
+// A never-seeded database upgrade logs nothing at INFO: "starter upgrade
+// skipped" is reserved for starters a user modified.
+func TestApplyUpgradeOnMarkedDatabaseIsQuietAtInfo(t *testing.T) {
+	ctx := context.Background()
+	db, cat, as := fakeEnv(t, okRenderer{})
+	err := db.WriteTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO meta (key, value) VALUES (?, ?)`, MetaKey, store.Now(time.Now()))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if _, err := Apply(ctx, db, cat, as, time.Now(), log); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "starter upgrade skipped") {
+		t.Fatalf("noise at INFO: %s", buf.String())
 	}
 }

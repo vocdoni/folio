@@ -17,7 +17,7 @@
           "unit": {"type": "string", "maxLength": 32},
           "unit_price": {"type": "string", "maxLength": 64},
           "discount": {"type": "string", "maxLength": 64},
-          "amount": {"type": "string", "minLength": 1, "maxLength": 64}
+          "amount": {"type": "string", "minLength": 1, "pattern": "\\S", "maxLength": 64}
         }
       }
     },
@@ -28,8 +28,8 @@
         "additionalProperties": false,
         "required": ["label", "amount"],
         "properties": {
-          "label": {"type": "string", "minLength": 1, "maxLength": 200},
-          "amount": {"type": "string", "minLength": 1, "maxLength": 64},
+          "label": {"type": "string", "minLength": 1, "pattern": "\\S", "maxLength": 200},
+          "amount": {"type": "string", "minLength": 1, "pattern": "\\S", "maxLength": 64},
           "emphasis": {"type": "boolean"}
         }
       }

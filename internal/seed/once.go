@@ -214,7 +214,7 @@ func (p *pass) brand(ctx context.Context) error {
 	}
 	if !ok {
 		if p.upgrade {
-			p.log.Info("starter upgrade skipped: the starter does not exist", "kind", "brand", "id", want.ID, "seed_version", Version)
+			p.log.Debug("starter upgrade skipped: the starter does not exist", "kind", "brand", "id", want.ID, "seed_version", Version)
 			return nil
 		}
 		if want.Logo.AssetID, err = p.uploadLogo(ctx); err != nil {
@@ -268,7 +268,7 @@ func (p *pass) template(ctx context.Context, id string) error {
 	}
 	if !ok {
 		if p.upgrade {
-			p.log.Info("starter upgrade skipped: the starter does not exist", "kind", "template", "id", id, "seed_version", Version)
+			p.log.Debug("starter upgrade skipped: the starter does not exist", "kind", "template", "id", id, "seed_version", Version)
 			return nil
 		}
 		if _, err := p.cat.CreateTemplate(ctx, Actor, want, "starter template"); err != nil {

@@ -309,3 +309,23 @@ func TestValidationNumbersInFiguresGetTheHint(t *testing.T) {
 		t.Fatalf("metadata findings carry no figure hint: %+v", mf)
 	}
 }
+
+// A white-space-only figure or label satisfies minLength but not the schema.
+func TestValidationBlankFigureRejected(t *testing.T) {
+	tp := tmpl()
+	tp.DataSchema = json.RawMessage(`{"type":"object","properties":{"budget":{"$ref":"folio:component/budget"}}}`)
+	s, fs := CompileSchemas(tp)
+	if len(fs) != 0 {
+		t.Fatal(fs)
+	}
+	data, _ := model.DecodeJSON([]byte(`{"budget": {"items": [{"description": "Design", "amount": " "}],
+	  "totals": [{"label": "  ", "amount": "10"}]}}`))
+	got := s.ValidateData(data.(map[string]any), []components.Use{{Name: "budget"}})
+	paths := map[string]bool{}
+	for _, f := range got {
+		paths[f.Path] = true
+	}
+	if !paths["/data/budget/items/0/amount"] || !paths["/data/budget/totals/0/label"] {
+		t.Fatalf("blank figure/label accepted: %+v", got)
+	}
+}

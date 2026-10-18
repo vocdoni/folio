@@ -537,9 +537,10 @@ schedules. Folio now lays out exactly what you send:
   uses the old data shape, so revising one (`render_document` with
   `document_id`) fails with `validation_failed` until you rewrite
   `data.budget` and `data.milestones` as in the table above.
-- **Pinned versions.** `render_document` or `validate_document` with
-  `template_version: 1` of an upgraded starter fails the same way; the error
-  names the current version. Omit `template_version` to use it.
+- **Pinned versions.** `render_document` with `template_version: 1` of an
+  upgraded starter fails the same way, and its error message names the current
+  version; `validate_document` returns `valid: false` and says so in its text
+  summary. Omit `template_version` to use the current version.
 - Your own templates keep working when their `data_schema` references
   `folio:component/budget` or `folio:component/milestones` (the reference
   now resolves to the new schema), but their `sample` and the documents
