@@ -67,7 +67,7 @@ func TestPrompts(t *testing.T) {
 		return res.Messages[0].Content.(*mcp.TextContent).Text
 	}
 	txt := get("new_document", map[string]string{"template_id": "memo"})
-	for _, want := range []string{`Template: memo`, "Required sections (headings): Summary", "validate_document", "idempotency_key", "never compute"} {
+	for _, want := range []string{`Template: memo`, "Required sections (headings): Summary", "validate_document", "idempotency_key", "exactly as it should appear"} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("new_document(memo) lacks %q", want)
 		}

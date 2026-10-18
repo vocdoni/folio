@@ -23,7 +23,7 @@ A template is a versioned, shared recipe for one kind of document. Start from
 | `strict` | `true` turns placeholder warnings into errors |
 | `body_skeleton` | Markdown agents start from: every section heading, component divs, `TODO` where text goes |
 | `sample` | `{"markdown", "metadata", "data"}`: a complete realistic document |
-| `labels` | per-language overrides of table labels, e.g. `{"es": {"budget.total": "Importe total"}}` |
+| `labels` | per-language overrides of table labels, e.g. `{"es": {"budget.amount": "Importe"}}` |
 | `spec_version` | set by Folio (currently 1); keep it when copying |
 
 ## Layout
@@ -115,17 +115,21 @@ blank pages or content touching the page edges, and fits the page limit.
 Built-in label tables exist for `en`, `es` and `ca`. `labels` overrides
 individual keys per language; a language outside the built-in set uses its
 table from `labels` only if it defines every key (otherwise English labels
-are used), and numbers then format as in English. Keys:
+are used). Folio never formats figures: they are printed as sent. Keys:
 
 `budget.description`, `budget.quantity`, `budget.unit`, `budget.unit_price`,
-`budget.discount`, `budget.amount`, `budget.subtotal`, `budget.tax`,
-`budget.total`, `milestones.name`, `milestones.date`,
+`budget.discount`, `budget.amount`, `milestones.name`, `milestones.date`,
 `milestones.description`, `milestones.deliverables`, `milestones.payment`,
 `deliverables.id`, `deliverables.name`, `deliverables.description`,
 `deliverables.due`, `deliverables.acceptance`, `signatures.signature`,
 `signatures.date`, `info.client`, `info.project`, `info.reference`,
 `info.date`, `info.author`, `info.version_label`, `cover.prepared_for`,
 `toc.title`, `page`.
+
+Budget total rows have no label keys: their labels are the `label` of each
+`data.budget.totals` row, written in the document's language. The retired
+keys `budget.subtotal`, `budget.tax` and `budget.total` are still accepted in
+`labels` and ignored.
 
 ## Versions and archiving
 

@@ -1,6 +1,6 @@
 ---
 name: folio
-description: Create branded, consistently formatted PDF and editable DOCX business documents (proposals, quotes, budgets, statements of work, requirements, technical reports, letters) with a Folio server over MCP. Use when the user asks to write, format, brand, render, revise, publish or share such a document, to produce a budget or quote whose totals, taxes and payment schedule must be exact, or to create and manage Folio templates, brands and assets. Folio computes every money value; never calculate totals yourself.
+description: Create branded, consistently formatted PDF and editable DOCX business documents (proposals, quotes, budgets, statements of work, requirements, technical reports, letters) with a Folio server over MCP. Use when the user asks to write, format, brand, render, revise, publish or share such a document, to lay out a budget or quote with line items, totals and payment terms, or to create and manage Folio templates, brands and assets. Folio never changes content or figures, so send every value exactly as it should appear.
 license: AGPL-3.0-only
 compatibility: Needs a Folio server connected as an MCP server (Streamable HTTP with a bearer token), for example through the Folio Claude Code plugin or `claude mcp add --transport http`.
 ---
@@ -9,8 +9,8 @@ compatibility: Needs a Folio server connected as an MCP server (Streamable HTTP 
 
 Folio turns Markdown, metadata and typed data into a branded PDF and an
 editable DOCX, using templates and brands shared by everyone on the Folio
-instance. You write the content; Folio validates it, computes all money
-values, renders both files and returns download links.
+instance. You write the content, figures included; Folio checks its
+structure, renders both files exactly as written and returns download links.
 
 ## Before you start
 
@@ -28,18 +28,20 @@ instead of formatting the document yourself.
    `components`, `body_skeleton` and `sample`.
 3. `upload_asset` each image once and reference it as
    `![Caption](asset:<asset_id>)`.
-4. Write the Markdown from `body_skeleton`; put prices, quantities and
-   percentages in `data` as strings.
+4. Write the Markdown from `body_skeleton`; put every figure in `data` as a
+   string written exactly as it should appear, including the budget's
+   `totals` rows.
 5. `validate_document` with the same arguments; fix every `error` finding
    (each has a JSON pointer `path` and a `hint`) and validate again.
 6. `render_document` with an `idempotency_key`; look at the warnings and the
    preview image.
-7. Share the PDF and DOCX links and quote totals from `computed`.
+7. Share the PDF and DOCX links.
 
 ## Rules
 
-- Never compute or type money totals, taxes, discounts or payment amounts:
-  Folio computes them from `data.budget` and returns them in `computed`.
+- Folio never changes your content or figures: send every value exactly as
+  it should appear. It does not calculate or check totals, taxes, discounts
+  or payments, so work them out and double-check them before rendering.
 - Validate before rendering; never retry an unchanged call that failed with
   `validation_failed` or `timeout`. Retry `busy` after a few seconds with the
   same arguments and `idempotency_key`.

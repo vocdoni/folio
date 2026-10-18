@@ -45,7 +45,7 @@ func (d *Deps) newDocumentPrompt(ctx context.Context, templateID string) (string
 		sb.WriteString("2. Start from body_skeleton; keep its headings and component blocks.\n")
 	}
 	sb.WriteString(`3. Gather the facts from the user; never invent prices, dates or names. If the document has images, upload them once with upload_asset and reference them as ![caption](asset:<asset_id>).
-4. Put line items, milestones, deliverables and signatures in data (amounts as strings for exact decimals). Folio computes subtotals, taxes, totals and payment amounts: never compute or type them yourself.
+4. Put line items, total rows, milestones, deliverables and signatures in data. Folio never changes your content or figures: send every value exactly as it should appear (figures as strings such as "€1,234.50"), and check the sums yourself, because Folio prints them as sent.
 5. Call validate_document and fix every error (each finding has a path and a hint). Replace placeholders such as TODO.
 6. Call render_document with an idempotency_key. Check the warnings and the first preview image.
 7. Share the PDF and DOCX links (they are public capabilities: anyone with the link can download). To change the document later, call get_document(include_source=true) and render_document(document_id, expected_revision).

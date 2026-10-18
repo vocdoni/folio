@@ -338,7 +338,7 @@ func TestInstructionsLimits(t *testing.T) {
 	if n := len([]rune(first)); n > 512 {
 		t.Fatalf("first paragraph is %d characters; it must stand alone within 512", n)
 	}
-	for _, want := range []string{"list_templates", "get_template", "upload_asset", "validate_document", "render_document", "never compute", "get_guide"} {
+	for _, want := range []string{"list_templates", "get_template", "upload_asset", "validate_document", "render_document", "exactly as it should appear", "get_guide"} {
 		if !strings.Contains(first, want) {
 			t.Errorf("first paragraph lacks %q", want)
 		}
