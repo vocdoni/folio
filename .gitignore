@@ -18,3 +18,7 @@
 /web/test-results/
 /web/playwright-report/
 /web/.vitest/
+
+# web UI build output and tooling
+/internal/webui/dist/*
+!/internal/webui/dist/.keep

@@ -332,3 +332,32 @@ func TestServeRunsBeforeShutdownFirst(t *testing.T) {
 		t.Fatal("the open stream held up the drain")
 	}
 }
+
+// TestUIMount (B-AC1): without a UI handler /ui and /ui/api/* are plain 404s
+// and / stays a 404; with one, /ui* reaches it and / redirects to /ui/.
+func TestUIMount(t *testing.T) {
+	get := func(h http.Handler, path string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		return w
+	}
+	off, _ := newTestHandler(t, Options{Tokens: tokens})
+	for _, p := range []string{"/ui", "/ui/", "/ui/api/session", "/ui/api/login", "/"} {
+		if w := get(off, p); w.Code != http.StatusNotFound {
+			t.Errorf("UI disabled: GET %s = %d", p, w.Code)
+		}
+	}
+	ui := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ui:"+r.URL.Path) })
+	on, _ := newTestHandler(t, Options{Tokens: tokens, UI: ui})
+	for _, p := range []string{"/ui", "/ui/", "/ui/api/session"} {
+		if w := get(on, p); w.Code != 200 || w.Body.String() != "ui:"+p {
+			t.Errorf("UI enabled: GET %s = %d %q", p, w.Code, w.Body)
+		}
+	}
+	if w := get(on, "/"); w.Code != http.StatusFound || w.Header().Get("Location") != "/ui/" {
+		t.Errorf("root redirect: %d %v", w.Code, w.Header())
+	}
+	if w := get(on, "/healthz"); w.Code != 200 {
+		t.Errorf("healthz: %d", w.Code)
+	}
+}

@@ -38,6 +38,7 @@ import (
 	"github.com/vocdoni/folio/internal/seed"
 	"github.com/vocdoni/folio/internal/store"
 	"github.com/vocdoni/folio/internal/validate"
+	"github.com/vocdoni/folio/internal/webui"
 )
 
 // Options are the parts of the wiring that are not configuration.
@@ -257,8 +258,19 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	srv := mcpserver.New(&mcpserver.Deps{Catalog: cat, Documents: docs, Assets: as, Validator: pipeline, Raster: engine, Queue: queue,
 		Blobs: blobs, DB: db, Reviewer: rv, Activity: rec, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
 		Logger: log, Now: o.Now, ProgressInterval: o.ProgressInterval})
+	var ui http.Handler
+	if cfg.UIEnabled() {
+		ws, err := webui.New(webui.Options{Config: cfg, DB: db, Blobs: blobs, Catalog: cat, Documents: docs, Assets: as,
+			Validator: pipeline, Raster: engine, Queue: queue, Activity: rec, Broadcaster: bc,
+			Reviewer: rv != nil, Version: o.Version, Sandbox: string(level), Packages: packages, Logger: log, Now: o.Now})
+		if err != nil {
+			return nil, err
+		}
+		ui = ws
+		log.Info("web UI enabled", "path", "/ui/")
+	}
 	h, err := httpserver.NewHandler(httpserver.Options{
-		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth,
+		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth, UI: ui,
 		Files: docs, MaxRequestBytes: cfg.MaxRequestBytes, Logger: log, Ping: db.R.PingContext,
 		Health: httpserver.Health{Version: o.Version, Sandbox: string(level), SchemaVersion: store.SchemaVersion(), Reviewer: rv != nil},
 	})

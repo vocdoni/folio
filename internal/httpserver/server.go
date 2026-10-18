@@ -36,7 +36,10 @@ type Options struct {
 	Health          Health
 	Ping            func(context.Context) error // database liveness for /healthz; nil = always ok
 	MaxRequestBytes int64                       // FOLIO_MAX_REQUEST_BYTES for /mcp
-	Logger          *slog.Logger
+	// UI serves /ui and everything below it (nil: the web UI is disabled and
+	// /ui is a 404 like any unknown path). When set, / redirects to /ui/.
+	UI     http.Handler
+	Logger *slog.Logger
 }
 
 const robots = "User-agent: *\nDisallow: /\n"
@@ -71,6 +74,13 @@ func NewHandler(o Options) (http.Handler, error) {
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(h)
 	})
+	if o.UI != nil {
+		mux.Handle("/ui", o.UI)
+		mux.Handle("/ui/", o.UI)
+		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/ui/", http.StatusFound)
+		})
+	}
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte(robots))
