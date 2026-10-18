@@ -69,6 +69,7 @@ type Server struct {
 	sessions *sessions
 	limiter  *loginLimiter
 	static   *static
+	pages    *pageCache
 	handler  http.Handler
 
 	ipLogOnce sync.Once
@@ -102,6 +103,7 @@ func New(o Options) (*Server, error) {
 	s.sessions = newSessions(o.Config.UISessionTTL, maxSessions, o.Now, s.sessionEnded)
 	s.limiter = newLoginLimiter(o.Now)
 	s.static = newStatic(o.Dist)
+	s.pages = newPageCache(pageCacheBytes)
 	s.handler = s.securityHeaders(s.routes())
 	return s, nil
 }
@@ -132,5 +134,8 @@ func (s *Server) routes() http.Handler {
 	s.api(mux, "POST /ui/api/login", route{public: true, action: "ui.login"}, s.handleLogin)
 	s.api(mux, "POST /ui/api/logout", route{action: "ui.logout"}, s.handleLogout)
 	s.overviewRoutes(mux)
+	s.documentRoutes(mux)
+	s.catalogRoutes(mux)
+	s.assetRoutes(mux)
 	return mux
 }

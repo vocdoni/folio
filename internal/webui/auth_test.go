@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -62,7 +63,7 @@ func newFixture(t *testing.T, tweak func(*Options)) *fixture {
 	t.Cleanup(func() { db.Close() })
 	clk := &testClock{t: time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)}
 	o := Options{Config: testConfig("https://folio.example.test"), DB: db, Dist: testDist, Version: "test", Sandbox: "rlimits-only",
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: clk.Now}
+		Logger: testLogger(), Now: clk.Now}
 	if tweak != nil {
 		tweak(&o)
 	}
@@ -359,4 +360,12 @@ func TestLoginIsRecorded(t *testing.T) {
 	if rows[0].Outcome != "ok" {
 		t.Fatalf("login row %+v", rows[0])
 	}
+}
+
+// testLogger discards logs unless FOLIO_TEST_LOG is set.
+func testLogger() *slog.Logger {
+	if os.Getenv("FOLIO_TEST_LOG") != "" {
+		return slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

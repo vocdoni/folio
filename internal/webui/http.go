@@ -187,6 +187,17 @@ type note struct {
 	detail   activity.Detail
 }
 
+// noteActivity sets the activity target id ("" keeps the path id) and detail
+// of the current request.
+func noteActivity(r *http.Request, targetID string, d activity.Detail) {
+	if n, ok := r.Context().Value(noteKey{}).(*note); ok {
+		if targetID != "" {
+			n.targetID = targetID
+		}
+		n.detail = d
+	}
+}
+
 // sameOrigin reports whether an Origin header matches FOLIO_PUBLIC_URL
 // (scheme, host and port).
 func (s *Server) sameOrigin(origin string) bool {
