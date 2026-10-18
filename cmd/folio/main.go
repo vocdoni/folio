@@ -39,6 +39,8 @@ func main() {
 	switch cmd {
 	case "sandbox-exec":
 		os.Exit(sandbox.Main(args))
+	case "render":
+		os.Exit(renderCmd(args))
 	case "version":
 		fmt.Println("folio", version())
 	case "serve":
