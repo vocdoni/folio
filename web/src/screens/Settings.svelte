@@ -129,6 +129,7 @@
       <h3>Gemini CLI</h3>
       <p class="small muted">Add this to <span class="code">~/.gemini/settings.json</span>.</p>
       <Copy text={real.gemini} display={display.gemini} label="Gemini CLI configuration" />
+      <h3>pi coding agent</h3>
       <PiConnect {base} token={realToken} shown={shownToken} />
     </section>
 

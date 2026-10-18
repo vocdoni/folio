@@ -35,6 +35,6 @@
     font-size: var(--fs-0);
     line-height: 1.6;
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
 </style>

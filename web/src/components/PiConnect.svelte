@@ -9,7 +9,6 @@
   const display = $derived(piSetup(base, shown));
 </script>
 
-<h3>pi coding agent</h3>
 <p class="small muted">Run these in a terminal. In a pi session that is already open, run <span class="code">/reload</span> afterwards; <span class="code">/skill:folio</span> forces the skill.</p>
 <Copy text={real.commands} display={display.commands} label="pi setup commands" />
 <p class="small muted">To edit the file yourself, put this in <span class="code">~/.pi/agent/mcp.json</span>:</p>
