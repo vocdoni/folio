@@ -1,0 +1,122 @@
+[
+ {
+  "id": "service-agreement",
+  "name": "Service agreement",
+  "description": "A short agreement for a recurring service.",
+  "category": "agreement",
+  "brand_id": "example",
+  "languages": [
+   "en"
+  ],
+  "layout": {
+   "base": "report",
+   "cover": true,
+   "toc": false,
+   "page_size": "a4",
+   "heading_numbering": true
+  },
+  "metadata_schema_json": "{not json",
+  "data_schema_json": "",
+  "sections": [
+   {
+    "title": "Parties",
+    "required": true,
+    "aliases": [],
+    "hint": "Who agrees.",
+    "component": ""
+   },
+   {
+    "title": "Services",
+    "required": true,
+    "aliases": [],
+    "hint": "",
+    "component": ""
+   },
+   {
+    "title": "Fees",
+    "required": true,
+    "aliases": [],
+    "hint": "",
+    "component": "budget"
+   },
+   {
+    "title": "Signatures",
+    "required": false,
+    "aliases": [],
+    "hint": "",
+    "component": "signatures"
+   }
+  ],
+  "components": [
+   "budget",
+   "signatures"
+  ],
+  "strict": false,
+  "body_skeleton": "# Parties\n\nTODO\n\n# Services\n\nTODO\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
+  "sample": {
+   "markdown": "# Parties\n\nExample Co and ACME Corp.\n\n# Services\n\nMonthly maintenance of the office network.\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
+   "metadata_json": "{\"title\":\"Network maintenance agreement\",\"date\":\"2026-10-18\",\"language\":\"en\",\"client\":\"ACME Corp\"}",
+   "data_json": "{\"budget\":{\"items\":[{\"description\":\"Monthly maintenance\",\"quantity\":\"12\",\"unit\":\"months\",\"unit_price\":\"€450.00\",\"amount\":\"€5,400.00\"}],\"totals\":[{\"label\":\"Total per year\",\"amount\":\"€5,400.00\",\"emphasis\":true}]},\"signatures\":[{\"name\":\"Jane Doe\",\"role\":\"Director\",\"organization\":\"Example Co\"},{\"name\":\"John Smith\",\"role\":\"Office manager\",\"organization\":\"ACME Corp\"}]}"
+  }
+ },
+ {
+  "id": "service-agreement",
+  "name": "Service agreement",
+  "description": "A short agreement for a recurring service.",
+  "category": "agreement",
+  "brand_id": "example",
+  "languages": [
+   "en"
+  ],
+  "layout": {
+   "base": "report",
+   "cover": true,
+   "toc": false,
+   "page_size": "a4",
+   "heading_numbering": true
+  },
+  "metadata_schema_json": "{\"type\":\"object\",\"properties\":{\"term\":{\"type\":\"string\",\"title\":\"Term\"}}}",
+  "data_schema_json": "{\"type\":\"object\",\"required\":[\"budget\"],\"properties\":{\"budget\":{\"$ref\":\"folio:component/budget\"},\"signatures\":{\"$ref\":\"folio:component/signatures\"}}}",
+  "sections": [
+   {
+    "title": "Parties",
+    "required": true,
+    "aliases": [],
+    "hint": "Who agrees.",
+    "component": ""
+   },
+   {
+    "title": "Services",
+    "required": true,
+    "aliases": [],
+    "hint": "",
+    "component": ""
+   },
+   {
+    "title": "Fees",
+    "required": true,
+    "aliases": [],
+    "hint": "",
+    "component": "budget"
+   },
+   {
+    "title": "Signatures",
+    "required": false,
+    "aliases": [],
+    "hint": "",
+    "component": "signatures"
+   }
+  ],
+  "components": [
+   "budget",
+   "signatures"
+  ],
+  "strict": false,
+  "body_skeleton": "# Parties\n\nTODO\n\n# Services\n\nTODO\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
+  "sample": {
+   "markdown": "# Parties\n\nExample Co and ACME Corp.\n\n# Services\n\nMonthly maintenance of the office network.\n\n# Fees\n\n::: folio-budget\n:::\n\n# Signatures\n\n::: folio-signatures\n:::\n",
+   "metadata_json": "{\"title\":\"Network maintenance agreement\",\"date\":\"2026-10-18\",\"language\":\"en\",\"client\":\"ACME Corp\"}",
+   "data_json": "{\"budget\":{\"items\":[{\"description\":\"Monthly maintenance\",\"quantity\":\"12\",\"unit\":\"months\",\"unit_price\":\"€450.00\",\"amount\":\"€5,400.00\"}],\"totals\":[{\"label\":\"Total per year\",\"amount\":\"€5,400.00\",\"emphasis\":true}]},\"signatures\":[{\"name\":\"Jane Doe\",\"role\":\"Director\",\"organization\":\"Example Co\"},{\"name\":\"John Smith\",\"role\":\"Office manager\",\"organization\":\"ACME Corp\"}]}"
+  }
+ }
+]
