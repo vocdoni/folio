@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const testKey = "sk-or-test-key-0123456789"
+const testKey = "sk-or-test-xxxxxxxxxxxxxx"
 
 func pagePNG(t *testing.T, w, h int) []byte {
 	t.Helper()

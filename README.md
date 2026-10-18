@@ -447,7 +447,7 @@ Render a first quote with the new template:
 ```json
 {
   "template_id": "acme-quote",
-  "idempotency_key": "acme-quote-globex-2026-10-18",
+  "idempotency_key": "quote-001",
   "metadata": {"title": "Website maintenance", "date": "2026-10-18", "language": "en", "client": "Globex"},
   "markdown": "# Summary\n\nMonthly maintenance of the Globex website.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
   "data": {"budget": {"currency": "EUR", "tax_rate": "21",
