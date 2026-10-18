@@ -174,7 +174,12 @@ func TestSecurityNestingBombRejectedBeforePandoc(t *testing.T) {
 	if !has(PreScan(list, limits), model.CodeNestingTooDeep, model.SeverityError) {
 		t.Fatal("list bomb passed the pre-scan")
 	}
-	normal := "# T\n\n> quote\n\n- a\n  - b\n    - c\n\n```\n" + strings.Repeat("> ", 100) + "\n```\n"
+	for _, marker := range []string{"- ", "* ", "+ ", "1. ", "1) ", "> - "} {
+		if !has(PreScan(strings.Repeat(marker, 20000)+"x\n", limits), model.CodeNestingTooDeep, model.SeverityError) {
+			t.Fatalf("inline %q marker bomb passed the pre-scan", marker)
+		}
+	}
+	normal := "# T\n\n> quote\n\n- a\n  - b\n    - c\n\n1. one\n   - 1.1\n\n* * *\n\n```\n" + strings.Repeat("> ", 100) + "\n```\n"
 	if fs := PreScan(normal, limits); len(fs) != 0 {
 		t.Fatalf("normal markdown flagged: %+v", fs)
 	}

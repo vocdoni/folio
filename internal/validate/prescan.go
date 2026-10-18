@@ -71,7 +71,7 @@ func PreScan(md string, l Limits) []model.Finding {
 		case divOpenRE.MatchString(line):
 			anyDivDepth++
 		}
-		if l.MaxNesting > 0 && !nestingReported && anyDivDepth+quoteDepth(line)+indentCols(line)/2 > hardLimit {
+		if l.MaxNesting > 0 && !nestingReported && anyDivDepth+quoteDepth(line)+indentCols(line)/2+markerDepth(line) > hardLimit {
 			out = append(out, model.Finding{Code: model.CodeNestingTooDeep, Severity: model.SeverityError,
 				Path: fmt.Sprintf("markdown:%d", ln), Message: fmt.Sprintf("line %d is nested too deeply (limit %d levels)", ln, l.MaxNesting),
 				Hint: "flatten nested lists, quotes and divs"})
@@ -96,7 +96,7 @@ func PreScan(md string, l Limits) []model.Finding {
 		case divOpenRE.MatchString(line):
 			divDepth++
 		}
-		depth := divDepth + quoteDepth(line) + indentCols(line)/2
+		depth := divDepth + quoteDepth(line) + indentCols(line)/2 + markerDepth(line)
 		if l.MaxNesting > 0 && depth > limit && !nestingReported {
 			out = append(out, model.Finding{Code: model.CodeNestingTooDeep, Severity: model.SeverityError,
 				Path: fmt.Sprintf("markdown:%d", ln), Message: fmt.Sprintf("line %d is nested too deeply (limit %d levels)", ln, l.MaxNesting),
@@ -142,6 +142,27 @@ func quoteDepth(line string) int {
 		}
 	}
 	return n
+}
+
+// listMarkerRE matches one list marker ("- ", "* ", "+ ", "1. ", "1) ") at the
+// start of its input.
+var listMarkerRE = regexp.MustCompile(`^(?:[-*+]|[0-9]{1,9}[.)])[ \t]+`)
+
+// markerDepth counts consecutive list markers at the start of a line (after
+// block-quote markers and indentation): pandoc nests "- - - x" one list per
+// marker, so a single line can nest arbitrarily deep without any indentation.
+func markerDepth(line string) int {
+	n := 0
+	s := line
+	for {
+		s = strings.TrimLeft(s, " \t>")
+		m := listMarkerRE.FindString(s)
+		if m == "" {
+			return n
+		}
+		n++
+		s = s[len(m):]
+	}
 }
 
 func indentCols(line string) int {
