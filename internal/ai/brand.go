@@ -5,7 +5,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"image"
 	"net/url"
@@ -297,29 +296,49 @@ type BrandProposal struct {
 	LogoIndex int               `json:"logo_index"` // index into Evidence.Images, -1 for none
 }
 
-const brandSystem = `You propose a document brand for Folio (colours and fonts used in PDF and DOCX documents) from evidence Folio extracted: a logo's dominant colours or a website's colours, title and logo candidates.
-Map colours to roles: primary (headings, table headers), secondary (dark accent), accent (highlights), text (body text, dark, high contrast on the background), muted (secondary text, readable), background (page, usually white or near-white). Use only #RRGGBB values; prefer colours from the evidence for primary, secondary and accent. Pick fonts only from the given families (heading, body, mono). Header and footer are short texts such as the organisation name; leave them empty when unknown. logo_index is the index of the best logo among the evidence images, or -1.
-` + dataRules
+// brandColorPattern is a #RRGGBB colour.
+const brandColorPattern = `^#[0-9A-Fa-f]{6}$`
 
-func brandSchema(fonts []string) *Schema {
+func brandSystem(images bool) string {
+	s := `You propose a document brand for Folio (colours and fonts used in PDF and DOCX documents) from evidence Folio extracted: a logo's dominant colours or a website's colours, title and logo candidates.
+Map colours to roles: primary (headings, table headers), secondary (dark accent), accent (highlights), text (body text, dark, high contrast on the background), muted (secondary text, readable), background (page, usually white or near-white). Use only #RRGGBB values; prefer colours from the evidence for primary, secondary and accent. Pick fonts only from the given families (heading, body, mono). name is the organisation's name. Header and footer are short texts such as the organisation name; leave them empty when unknown.`
+	if images {
+		s += ` logo_index is the position (from 0) of the best logo among the website's images, or -1 when none of them is a logo.`
+	}
+	return s + "\n" + dataRules
+}
+
+// brandSchema lists name, colors, fonts, header, footer and, when there
+// are candidate images, logo_index restricted to -1 and their indexes.
+func brandSchema(fonts []string, images int) *Schema {
 	font := Enum(fonts...)
+	color := Raw(json.RawMessage(`{"type":"string","pattern":"` + strings.ReplaceAll(brandColorPattern, `\`, `\\`) + `"}`))
 	var colors []Property
 	for _, r := range []string{"primary", "secondary", "accent", "text", "muted", "background"} {
-		colors = append(colors, Prop(r, Str()))
+		colors = append(colors, Prop(r, color))
 	}
-	return Object(
+	props := []Property{
 		Prop("name", Str()),
 		Prop("colors", Object(colors...)),
 		Prop("fonts", Object(Prop("heading", font), Prop("body", font), Prop("mono", font))),
 		Prop("header", Str()),
 		Prop("footer", Str()),
-		Prop("logo_index", Int()),
-	)
+	}
+	if images > 0 {
+		idx := make([]string, 0, images+1)
+		for i := -1; i < images; i++ {
+			idx = append(idx, fmt.Sprint(i))
+		}
+		props = append(props, Prop("logo_index", Raw(json.RawMessage(`{"type":"integer","enum":[`+strings.Join(idx, ",")+`]}`))))
+	}
+	return Object(props...)
 }
 
-var colorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+var colorRE = regexp.MustCompile(brandColorPattern)
 
-func checkBrand(p BrandProposal, fonts []string, images int) []string {
+// checkBrand lists what the model must fix. logo_index is not checked: an
+// index outside the candidates means no logo (SuggestBrand clamps it).
+func checkBrand(p BrandProposal, fonts []string) []string {
 	var problems []string
 	for role, c := range map[string]string{"primary": p.Colors.Primary, "secondary": p.Colors.Secondary, "accent": p.Colors.Accent,
 		"text": p.Colors.Text, "muted": p.Colors.Muted, "background": p.Colors.Background} {
@@ -332,9 +351,6 @@ func checkBrand(p BrandProposal, fonts []string, images int) []string {
 			problems = append(problems, fmt.Sprintf("fonts.%s must be one of %s", role, strings.Join(fonts, ", ")))
 		}
 	}
-	if p.LogoIndex < -1 || p.LogoIndex >= images {
-		problems = append(problems, fmt.Sprintf("logo_index must be -1 or between 0 and %d", images-1))
-	}
 	if strings.TrimSpace(p.Name) == "" {
 		problems = append(problems, "name is required")
 	}
@@ -343,7 +359,9 @@ func checkBrand(p BrandProposal, fonts []string, images int) []string {
 }
 
 // SuggestBrand asks the model for a brand proposal from the evidence and
-// checks it (one repair round).
+// checks it: a malformed stream is retried once and an unusable answer or
+// bad colours and fonts get one repair round. LogoIndex is -1 unless it
+// names one of the website's candidate images.
 func (c *Client) SuggestBrand(ctx context.Context, in BrandInput, step func(string)) (*BrandProposal, error) {
 	ev := map[string]any{"name_hint": in.NameHint}
 	images := 0
@@ -359,32 +377,21 @@ func (c *Client) SuggestBrand(ctx context.Context, in BrandInput, step func(stri
 	if len(in.LogoPNG) > 0 {
 		parts = append(parts, Text("The logo image follows (untrusted data)."), PNG(in.LogoPNG))
 	}
-	msgs := []Message{{Role: "system", Content: brandSystem}, {Role: "user", Content: parts}}
-	req := Request{Messages: msgs, SchemaName: "brand_suggest", Schema: brandSchema(in.Fonts), Strict: true}
+	msgs := []Message{{Role: "system", Content: brandSystem(images > 0)}, {Role: "user", Content: parts}}
+	req := Request{Messages: msgs, SchemaName: "brand_suggest", Schema: brandSchema(in.Fonts, images), Strict: true,
+		MaxTokens: brandTokens, Timeout: brandTimeout}
 	step("asking the model")
-	var p BrandProposal
-	raw, err := c.JSON(ctx, req, &p)
-	if err != nil && !errors.Is(err, ErrNotJSON) {
+	p, problems, err := askChecked(ctx, c, req, "Your previous answer has these problems; answer again with all of them fixed:", func(p *BrandProposal) []string {
+		return checkBrand(*p, in.Fonts)
+	}, step)
+	if err != nil {
 		return nil, err
 	}
-	problems := []string{"the answer was not the expected JSON object"}
-	if err == nil {
-		problems = checkBrand(p, in.Fonts, images)
-	}
 	if len(problems) > 0 {
-		step("asking the model to fix its answer")
-		req.Messages = append(msgs, Message{Role: "assistant", Content: raw},
-			Message{Role: "user", Content: "Your answer has these problems; answer again with all of them fixed:\n- " + strings.Join(problems, "\n- ")})
-		p = BrandProposal{}
-		if _, err := c.JSON(ctx, req, &p); err != nil {
-			if errors.Is(err, ErrNotJSON) {
-				return nil, &model.Error{Code: model.ErrUnavailable, Message: "the assistant could not produce a usable brand; try again"}
-			}
-			return nil, err
-		}
-		if problems = checkBrand(p, in.Fonts, images); len(problems) > 0 {
-			return nil, &model.Error{Code: model.ErrUnavailable, Message: "the assistant could not produce a usable brand: " + strings.Join(problems, "; ")}
-		}
+		return nil, gaveUp("brand", problems)
 	}
-	return &p, nil
+	if p.LogoIndex < 0 || p.LogoIndex >= images {
+		p.LogoIndex = -1
+	}
+	return p, nil
 }

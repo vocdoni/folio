@@ -15,7 +15,6 @@
    "mono": "JetBrains Mono"
   },
   "header": "Northwind Traders",
-  "footer": "northwind.example",
-  "logo_index": -1
+  "footer": "northwind.example"
  }
 ]

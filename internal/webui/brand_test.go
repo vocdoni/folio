@@ -17,9 +17,11 @@ import (
 const brandAnswer = `{"name":"Acme Widgets","colors":{"primary":"#C8246B","secondary":"#0B7FAB","accent":"#E8B500","text":"#1C2421","muted":"#5B6662","background":"#FFFFFF"},"fonts":{"heading":"Inter","body":"Source Serif 4","mono":"JetBrains Mono"},"header":"Acme Widgets","footer":"acme.example","logo_index":%d}`
 
 // TestBrandFromLogo (B-AC5): extracted colours plus a proposal that
-// validates, with the logo attached.
+// validates, with the logo attached. A logo has no candidate images: the
+// schema has no logo_index and an index the model invents anyway is
+// ignored, without a repair round.
 func TestBrandFromLogo(t *testing.T) {
-	stub := &aiStub{answers: map[string][]string{"brand_suggest": {strings.Replace(brandAnswer, "%d", "-1", 1)}}}
+	stub := &aiStub{answers: map[string][]string{"brand_suggest": {strings.Replace(brandAnswer, "%d", "0", 1)}}}
 	sv := newAIServices(t, stub, nil)
 	logo := decode[AssetOut](t, sv.upload("acme-logo.png", testPNG(120, 60)), 200)
 	started := decode[JobStartedOut](t, sv.do("POST", "/ui/api/ai/brand-suggest", BrandSuggestIn{AssetID: logo.ID}, nil), http.StatusAccepted)
@@ -28,14 +30,17 @@ func TestBrandFromLogo(t *testing.T) {
 	var out BrandSuggestOut
 	_ = json.Unmarshal(raw, &out)
 	if j.State != jobDone || len(out.Swatches) < 2 || out.Swatches[0].Hex != "#FFFFFF" || out.Brand.ID != "acme-widgets" ||
-		out.Brand.Logo == nil || out.Brand.Logo.AssetID != logo.ID || len(out.Findings) != 0 {
-		t.Fatalf("suggestion %s", raw)
+		out.Brand.Logo == nil || out.Brand.Logo.AssetID != logo.ID || len(out.Findings) != 0 || out.LogoIndex != -1 || stub.count("brand_suggest") != 1 {
+		t.Fatalf("suggestion %s (%d calls)", raw, stub.count("brand_suggest"))
 	}
 	stub.mu.Lock()
 	body, _ := json.Marshal(stub.reqs[0])
 	stub.mu.Unlock()
 	if !strings.Contains(string(body), "#C8246B") || !strings.Contains(string(body), "data:image/png;base64,") {
 		t.Fatal("the model must see the logo colours and, with vision, the logo")
+	}
+	if strings.Contains(string(body), "logo_index") {
+		t.Fatal("without candidate images the request must not ask for logo_index")
 	}
 	var brands int
 	_ = sv.opts.DB.R.QueryRow(`SELECT count(*) FROM brands`).Scan(&brands)

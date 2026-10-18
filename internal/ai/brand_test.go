@@ -4,12 +4,16 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/vocdoni/folio/internal/model"
 )
 
 func TestDominantColors(t *testing.T) {
@@ -83,5 +87,68 @@ func TestExtractEvidenceBoundsImageURLs(t *testing.T) {
 	ev, _ := ExtractEvidence([]byte(`<html><head><link rel="icon" href="`+long+`"><link rel="icon" href="/ok.png"></head></html>`), base)
 	if !slices.Equal(ev.Images, []string{"https://acme.example.com/ok.png"}) {
 		t.Fatalf("images %d (first %d bytes)", len(ev.Images), len(ev.Images[0]))
+	}
+}
+
+const brandOK = `{"name":"Acme","colors":{"primary":"#C8246B","secondary":"#0B7FAB","accent":"#E8B500","text":"#1C2421","muted":"#5B6662","background":"#FFFFFF"},"fonts":{"heading":"Inter","body":"Inter","mono":"JetBrains Mono"},"header":"Acme","footer":""`
+
+// TestSuggestBrandFromLogo: without candidate images the schema has no
+// logo_index and whatever index the model invents means no logo, without a
+// repair round (this made every brand-from-logo request fail). Colours are
+// constrained by pattern, fonts by enum; the call is small and short.
+func TestSuggestBrandFromLogo(t *testing.T) {
+	c, s := newScripted(t, brandOK+`,"logo_index":0}`)
+	p, err := c.SuggestBrand(context.Background(), BrandInput{NameHint: "acme-logo", Swatches: []Swatch{{Hex: "#C8246B", Share: 1}},
+		Fonts: []string{"Inter", "JetBrains Mono"}}, func(string) {})
+	if err != nil || p.LogoIndex != -1 || len(s.requests) != 1 {
+		t.Fatalf("proposal %+v %v (%d requests)", p, err, len(s.requests))
+	}
+	name, strict, schema := s.schemaOf(t, 0)
+	color := `{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"}`
+	font := `{"type":"string","enum":["Inter","JetBrains Mono"]}`
+	want := `{"type":"object","properties":{"name":{"type":"string"},"colors":{"type":"object","properties":{"primary":` + color + `,"secondary":` + color +
+		`,"accent":` + color + `,"text":` + color + `,"muted":` + color + `,"background":` + color + `},"required":["primary","secondary","accent","text","muted","background"],"additionalProperties":false},` +
+		`"fonts":{"type":"object","properties":{"heading":` + font + `,"body":` + font + `,"mono":` + font + `},"required":["heading","body","mono"],"additionalProperties":false},` +
+		`"header":{"type":"string"},"footer":{"type":"string"}},"required":["name","colors","fonts","header","footer"],"additionalProperties":false}`
+	if name != "brand_suggest" || !strict || schema != want {
+		t.Fatalf("schema %s strict=%v\n got %s\nwant %s", name, strict, schema, want)
+	}
+	if s.requests[0]["max_tokens"] != float64(600) || strings.Contains(string(mustJSON(s.requests[0]["messages"])), "logo_index") {
+		t.Fatalf("max_tokens %v; the prompt must not ask for a logo index without images", s.requests[0]["max_tokens"])
+	}
+}
+
+// TestSuggestBrandLogoIndex: with candidate images logo_index is an enum of
+// -1 and their indexes; an index out of range becomes -1 (no repair round).
+func TestSuggestBrandLogoIndex(t *testing.T) {
+	ev := &Evidence{URL: "https://acme.example.com/", Colors: []ColorCount{}, Images: []string{"https://acme.example.com/a.svg", "https://acme.example.com/b.png"}}
+	for answer, want := range map[int]int{1: 1, 0: 0, -1: -1, 2: -1, 7: -1, -3: -1} {
+		c, s := newScripted(t, fmt.Sprintf(`%s,"logo_index":%d}`, brandOK, answer))
+		p, err := c.SuggestBrand(context.Background(), BrandInput{Evidence: ev, Fonts: []string{"Inter", "JetBrains Mono"}}, func(string) {})
+		if err != nil || p.LogoIndex != want || len(s.requests) != 1 {
+			t.Fatalf("logo_index %d: %+v %v (%d requests)", answer, p, err, len(s.requests))
+		}
+		if _, _, schema := s.schemaOf(t, 0); !strings.HasSuffix(schema, `"logo_index":{"type":"integer","enum":[-1,0,1]}},"required":["name","colors","fonts","header","footer","logo_index"],"additionalProperties":false}`) {
+			t.Fatalf("schema %s", schema)
+		}
+	}
+}
+
+// TestSuggestBrandRetriesMalformed: a malformed stream is retried once as
+// is; a cut-off answer gets a repair round that does not quote it, and a
+// second one is a clear, retryable unavailable error.
+func TestSuggestBrandRetriesMalformed(t *testing.T) {
+	in := BrandInput{Swatches: []Swatch{{Hex: "#C8246B", Share: 1}}, Fonts: []string{"Inter", "JetBrains Mono"}}
+	c, s := newScripted(t, answerRunaway, brandOK+"}")
+	if p, err := c.SuggestBrand(context.Background(), in, func(string) {}); err != nil || p.Name != "Acme" || len(s.requests) != 2 || len(messagesOf(s.requests[1])) != 2 {
+		t.Fatalf("proposal %+v %v (%d requests)", p, err, len(s.requests))
+	}
+	c, s = newScripted(t, answerCutOff)
+	_, err := c.SuggestBrand(context.Background(), in, func(string) {})
+	if me, ok := errors.AsType[*model.Error](err); !ok || me.Code != model.ErrUnavailable || !me.Retryable || !strings.Contains(me.Message, "cut off") {
+		t.Fatalf("cut off twice: %#v", err)
+	}
+	if m := messagesOf(s.requests[1]); len(m) != 3 || m[2]["role"] != "user" || !strings.Contains(fmt.Sprint(m[2]["content"]), "cut off") {
+		t.Fatalf("the repair round must not quote a cut-off answer: %s", mustJSON(m))
 	}
 }
