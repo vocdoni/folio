@@ -16,9 +16,11 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/vocdoni/folio/internal/activity"
+	"github.com/vocdoni/folio/internal/ai"
 	"github.com/vocdoni/folio/internal/assets"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/config"
@@ -53,7 +55,8 @@ type Options struct {
 	Preview     *catalog.Service // catalog bound to the UI preview pipeline (its own queue)
 	Activity    *activity.Recorder
 	Broadcaster *activity.Broadcaster
-	Reviewer    bool // the layout reviewer is configured
+	AI          *ai.Client // nil: the assistants are off (no FOLIO_OPENROUTER_API_KEY)
+	Reviewer    bool       // the layout reviewer is configured
 	Version     string
 	Sandbox     string
 	Packages    []string
@@ -72,6 +75,10 @@ type Server struct {
 	static   *static
 	pages    *pageCache
 	previews *previewCache
+	jobs     *jobRunner
+	quotas   *quotas
+	vision   atomic.Bool // false once the model refused image input
+	stop     context.CancelFunc
 	handler  http.Handler
 
 	ipLogOnce sync.Once
@@ -107,6 +114,10 @@ func New(o Options) (*Server, error) {
 	s.static = newStatic(o.Dist)
 	s.pages = newPageCache(pageCacheBytes)
 	s.previews = newPreviewCache(o.Now)
+	base, stop := context.WithCancel(context.Background())
+	s.jobs, s.stop = newJobRunner(base, o.Now, o.Logger), stop
+	s.quotas = newQuotas(o.Config.AIDailyCalls, o.Config.AISessionCalls, o.Now)
+	s.vision.Store(true)
 	s.handler = s.securityHeaders(s.routes())
 	return s, nil
 }
@@ -115,12 +126,19 @@ func New(o Options) (*Server, error) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
 
 // sessionEnded releases what a session owned (logout, expiry, eviction):
-// live streams and cached previews (later: AI jobs).
+// live streams, cached previews and running AI jobs.
 func (s *Server) sessionEnded(id string) {
 	if s.o.Broadcaster != nil {
 		s.o.Broadcaster.CloseKey(id)
 	}
 	s.previews.dropSession(id)
+	s.jobs.cancelSession(id)
+}
+
+// Close cancels running AI jobs and waits for them (server shutdown).
+func (s *Server) Close() {
+	s.stop()
+	s.jobs.wg.Wait()
 }
 
 func (s *Server) routes() http.Handler {
@@ -142,5 +160,6 @@ func (s *Server) routes() http.Handler {
 	s.catalogRoutes(mux)
 	s.assetRoutes(mux)
 	s.previewRoutes(mux)
+	s.aiRoutes(mux)
 	return mux
 }

@@ -23,6 +23,7 @@ import (
 
 	bundled "github.com/vocdoni/folio/assets"
 	"github.com/vocdoni/folio/internal/activity"
+	"github.com/vocdoni/folio/internal/ai"
 	"github.com/vocdoni/folio/internal/assets"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/checks"
@@ -68,6 +69,7 @@ type App struct {
 	Broadcaster *activity.Broadcaster
 	stopRec     context.CancelFunc
 	recDone     chan struct{}
+	closeUI     func() // cancels web UI jobs; nil without the UI
 	Seeded      bool
 	log         *slog.Logger
 }
@@ -271,14 +273,22 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		Blobs: blobs, DB: db, Reviewer: rv, Activity: rec, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
 		Logger: log, Now: o.Now, ProgressInterval: o.ProgressInterval})
 	var ui http.Handler
+	var uiClose func()
 	if cfg.UIEnabled() {
+		var assistant *ai.Client
+		if cfg.OpenRouterAPIKey != "" {
+			if assistant, err = ai.New(ai.Config{APIKey: cfg.OpenRouterAPIKey, Model: cfg.AIModel, BaseURL: cfg.OpenRouterBaseURL}); err != nil {
+				return nil, fmt.Errorf("app: %w", err)
+			}
+			log.Info("web UI assistants enabled: content you send to an assistant goes to OpenRouter", "model", cfg.AIModel)
+		}
 		ws, err := webui.New(webui.Options{Config: cfg, DB: db, Blobs: blobs, Catalog: cat, Documents: docs, Assets: as,
-			Validator: pipeline, Raster: engine, Queue: queue, Preview: &previewCat, Activity: rec, Broadcaster: bc,
+			Validator: pipeline, Raster: engine, Queue: queue, Preview: &previewCat, Activity: rec, Broadcaster: bc, AI: assistant,
 			Reviewer: rv != nil, Version: o.Version, Sandbox: string(level), Packages: packages, Logger: log, Now: o.Now})
 		if err != nil {
 			return nil, err
 		}
-		ui = ws
+		ui, uiClose = ws, ws.Close
 		log.Info("web UI enabled", "path", "/ui/")
 	}
 	h, err := httpserver.NewHandler(httpserver.Options{
@@ -298,7 +308,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		rec.Run(rctx)
 	}()
 	return &App{Config: cfg, Handler: h, DB: db, Catalog: cat, Documents: docs, Assets: as, Maintenance: mc,
-		Activity: rec, Broadcaster: bc, stopRec: stopRec, recDone: recDone, Seeded: seeded, log: log}, nil
+		Activity: rec, Broadcaster: bc, stopRec: stopRec, recDone: recDone, closeUI: uiClose, Seeded: seeded, log: log}, nil
 }
 
 // Run serves on ln until ctx is cancelled, with the periodic maintenance and,
@@ -328,16 +338,23 @@ func (a *App) Run(ctx context.Context, ln net.Listener) error {
 	}
 	a.log.Info("listening", "addr", ln.Addr().String(), "public_url", a.Config.PublicURL)
 	// Live activity streams are closed before the drain starts.
-	err := httpserver.Serve(ctx, ln, a.Handler, a.Config.RenderTimeout+20*time.Second, a.log, a.Broadcaster.Close)
+	beforeShutdown := []func(){a.Broadcaster.Close}
+	if a.closeUI != nil {
+		beforeShutdown = append(beforeShutdown, a.closeUI)
+	}
+	err := httpserver.Serve(ctx, ln, a.Handler, a.Config.RenderTimeout+20*time.Second, a.log, beforeShutdown...)
 	stop()
 	<-maintDone // the caller closes the database next
 	return err
 }
 
-// Close flushes and stops the activity writer, then closes the database.
-// Call it after Run returns (the HTTP drain is over), so the rows of the
-// last calls are written.
+// Close stops web UI jobs, flushes and stops the activity writer, then
+// closes the database. Call it after Run returns (the HTTP drain is over),
+// so the rows of the last calls are written.
 func (a *App) Close() error {
+	if a.closeUI != nil {
+		a.closeUI()
+	}
 	a.stopRec()
 	<-a.recDone
 	return a.DB.Close()

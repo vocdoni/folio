@@ -210,5 +210,5 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SessionOut{})
 }
 
-// aiEnabled reports whether the AI assistants are available (later tasks).
-func (s *Server) aiEnabled() bool { return false }
+// aiEnabled reports whether the AI assistants are available.
+func (s *Server) aiEnabled() bool { return s.o.AI != nil }
