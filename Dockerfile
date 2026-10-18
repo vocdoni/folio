@@ -72,8 +72,8 @@ RUN apt-get update \
       --shell /usr/sbin/nologin folio \
  && mkdir -p /data \
  && chown folio:folio /data
-COPY --from=fetch /fetch/pandoc /fetch/typst /usr/local/bin/
-COPY --from=build /out/folio /usr/local/bin/folio
+COPY --from=fetch --chown=root:root /fetch/pandoc /fetch/typst /usr/local/bin/
+COPY --from=build --chown=root:root /out/folio /usr/local/bin/folio
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/folio-entrypoint
 ENV FOLIO_DATA_DIR=/data
 VOLUME /data

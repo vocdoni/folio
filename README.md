@@ -80,7 +80,7 @@ export FOLIO_TOKEN="$(openssl rand -hex 32)"
 ### Docker
 
 ```sh
-docker run -d --name folio -p 8080:8080 \
+docker run -d --name folio -p 127.0.0.1:8080:8080 \
   -e FOLIO_PUBLIC_URL=http://localhost:8080 \
   -e FOLIO_TOKEN="$FOLIO_TOKEN" \
   -v folio-data:/data \

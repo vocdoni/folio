@@ -30,7 +30,7 @@ updates can redeploy `latest` when a new image is pushed.
 **Service → Settings → Volumes → Add volume**, mount path `/data`, or:
 
 ```sh
-railway volume add --mount-path /data
+railway volume --service folio add --mount-path /data
 ```
 
 Folio keeps its SQLite database, rendered files, assets, backups and runtime
