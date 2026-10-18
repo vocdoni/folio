@@ -4,7 +4,9 @@ go 1.27
 
 require (
 	github.com/cockroachdb/apd/v3 v3.2.3
+	github.com/landlock-lsm/go-landlock v0.10.1
 	github.com/pdfcpu/pdfcpu v0.16.2
+	golang.org/x/sys v0.49.0
 )
 
 require (
@@ -16,4 +18,5 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 )
