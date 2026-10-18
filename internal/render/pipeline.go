@@ -135,6 +135,7 @@ func LayoutOptions(raw json.RawMessage) (model.LayoutOptions, error) {
 // Render validates and, unless ValidateOnly, renders.
 func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	start := time.Now()
+	reportProgress(ctx, StepValidate)
 	t, in := req.Template, req.Input
 	formats := in.Formats
 	if len(formats) == 0 {
@@ -189,6 +190,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	epoch := day.Unix()
 	labels, numberLang := brandkit.ResolveLabels(lang, t.Labels)
 
+	reportProgress(ctx, StepQueue)
 	release, err := p.cfg.Queue.Acquire(ctx)
 	if err != nil {
 		return nil, err
@@ -200,6 +202,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	}
 	defer job.Remove() //nolint:errcheck // best effort; swept at startup otherwise
 
+	reportProgress(ctx, StepParse)
 	doc, pwarn, err := p.cfg.Engine.ParseMarkdown(ctx, job, in.Markdown)
 	if err != nil {
 		return nil, err
@@ -289,6 +292,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	}
 
 	if want[model.FormatDOCX] {
+		reportProgress(ctx, StepDOCX)
 		docxDoc, err := cloneDoc(doc)
 		if err != nil {
 			return nil, err
@@ -309,6 +313,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 		}
 	}
 
+	reportProgress(ctx, StepPDF)
 	typstDoc := doc
 	rewriteImages(typstDoc, assets, false)
 	if err := p.cfg.Engine.WriteTypstBody(ctx, job, typstDoc); err != nil {
@@ -332,6 +337,7 @@ func (p *Pipeline) Render(ctx context.Context, req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	reportProgress(ctx, StepChecks)
 	n, pf := checks.PDF(ctx, pdf, p.cfg.MaxPages)
 	if model.HasErrors(pf) {
 		return nil, &model.Error{Code: model.ErrRenderFailed, Message: "the PDF output failed checks", Details: pf}
