@@ -158,7 +158,8 @@ func newReviewer(cfg *config.Config, injected review.Reviewer, log *slog.Logger)
 		log.Info("ai reviewer disabled (set FOLIO_OPENROUTER_API_KEY to enable it)")
 		return nil, nil
 	}
-	or, err := review.NewOpenRouter(review.OpenRouterConfig{APIKey: cfg.OpenRouterAPIKey, Model: cfg.ReviewModel, MaxPages: cfg.ReviewMaxPages})
+	or, err := review.NewOpenRouter(review.OpenRouterConfig{APIKey: cfg.OpenRouterAPIKey, Model: cfg.ReviewModel, MaxPages: cfg.ReviewMaxPages,
+		BaseURL: cfg.OpenRouterBaseURL})
 	if err != nil {
 		return nil, fmt.Errorf("app: %w", err)
 	}

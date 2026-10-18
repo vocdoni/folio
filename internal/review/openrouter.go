@@ -5,20 +5,17 @@ package review
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
 	"image/png"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
-	"unicode"
 
 	"golang.org/x/image/draw"
+
+	"github.com/vocdoni/folio/internal/ai"
 )
 
 // OpenRouter defaults.
@@ -31,8 +28,6 @@ const (
 	MaxPageWidth = 1240
 	// maxPagePixels bounds a page image before it is decoded.
 	maxPagePixels = 40_000_000
-	// maxResponseBytes bounds the response body that is read.
-	maxResponseBytes = 2 << 20
 )
 
 // systemPrompt is fixed: the reviewer only looks for layout defects and never
@@ -83,8 +78,8 @@ type OpenRouterConfig struct {
 	Model    string        // "" = DefaultModel
 	MaxPages int           // 0 = DefaultMaxPages
 	Timeout  time.Duration // per review call; 0 = DefaultTimeout
-	// BaseURL is the API root ("" = DefaultOpenRouterURL). Only tests change
-	// it; it is not configurable from the environment.
+	// BaseURL is the API root ("" = DefaultOpenRouterURL); set from
+	// FOLIO_OPENROUTER_BASE_URL (tests and outbound proxies).
 	BaseURL string
 	// HTTPClient overrides the client (tests). The default client has no
 	// overall timeout of its own (the per-call context bounds it) and never
@@ -93,13 +88,11 @@ type OpenRouterConfig struct {
 }
 
 // OpenRouter reviews pages with a vision model through OpenRouter's chat
-// completions API. Providers that may store or train on data are excluded
-// (provider.data_collection = "deny").
+// completions API (the shared internal/ai client: providers that may store
+// or train on data are excluded).
 type OpenRouter struct {
-	key, model, url string
-	maxPages        int
-	timeout         time.Duration
-	client          *http.Client
+	ai       *ai.Client
+	maxPages int
 }
 
 // NewOpenRouter returns an OpenRouter reviewer. It fails without an API key.
@@ -107,64 +100,28 @@ func NewOpenRouter(c OpenRouterConfig) (*OpenRouter, error) {
 	if strings.TrimSpace(c.APIKey) == "" {
 		return nil, errors.New("review: an OpenRouter API key is required")
 	}
-	o := &OpenRouter{key: strings.TrimSpace(c.APIKey), model: c.Model, url: c.BaseURL, maxPages: c.MaxPages, timeout: c.Timeout, client: c.HTTPClient}
-	if o.model == "" {
-		o.model = DefaultModel
+	if c.BaseURL == "" {
+		c.BaseURL = DefaultOpenRouterURL
 	}
-	if o.url == "" {
-		o.url = DefaultOpenRouterURL
+	if c.Timeout <= 0 {
+		c.Timeout = DefaultTimeout
 	}
-	o.url = strings.TrimRight(o.url, "/") + "/chat/completions"
+	if c.Model == "" {
+		c.Model = DefaultModel
+	}
+	client, err := ai.New(ai.Config{APIKey: c.APIKey, Model: c.Model, BaseURL: c.BaseURL, Timeout: c.Timeout, HTTPClient: c.HTTPClient})
+	if err != nil {
+		return nil, fmt.Errorf("review: %w", err)
+	}
+	o := &OpenRouter{ai: client, maxPages: c.MaxPages}
 	if o.maxPages <= 0 {
 		o.maxPages = DefaultMaxPages
-	}
-	if o.timeout <= 0 {
-		o.timeout = DefaultTimeout
-	}
-	if o.client == nil {
-		o.client = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	return o, nil
 }
 
 // Model returns the configured model id.
-func (o *OpenRouter) Model() string { return o.model }
-
-type contentPart struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *imageURL `json:"image_url,omitempty"`
-}
-
-type imageURL struct {
-	URL string `json:"url"`
-}
-
-type chatMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
-}
-
-type chatRequest struct {
-	Model          string         `json:"model"`
-	Messages       []chatMessage  `json:"messages"`
-	ResponseFormat map[string]any `json:"response_format"`
-	Provider       map[string]any `json:"provider"`
-	Temperature    int            `json:"temperature"`
-	MaxTokens      int            `json:"max_tokens"`
-}
-
-type chatResponse struct {
-	Choices []struct {
-		FinishReason string `json:"finish_reason"`
-		Message      struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
+func (o *OpenRouter) Model() string { return o.ai.Model() }
 
 // Review sends the pages to the model and returns its findings. It returns
 // an error, never partial findings, when the call cannot complete. Errors
@@ -181,76 +138,23 @@ func (o *OpenRouter) Review(ctx context.Context, pages []Page, info Info) ([]Fin
 	if lang == "" {
 		lang = "unknown"
 	}
-	parts := []contentPart{{Type: "text", Text: fmt.Sprintf("Review these %d rendered page(s). Document language: %s.", len(pages), lang)}}
+	parts := []ai.Part{ai.Text(fmt.Sprintf("Review these %d rendered page(s). Document language: %s.", len(pages), lang))}
 	for _, p := range pages {
 		img, err := downscalePNG(p.PNG, MaxPageWidth)
 		if err != nil {
 			return nil, fmt.Errorf("review: page %d: %w", p.Number, err)
 		}
-		parts = append(parts,
-			contentPart{Type: "text", Text: fmt.Sprintf("Page %d:", p.Number)},
-			contentPart{Type: "image_url", ImageURL: &imageURL{URL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(img)}})
-	}
-	body, err := json.Marshal(chatRequest{
-		Model:    o.model,
-		Messages: []chatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: parts}},
-		ResponseFormat: map[string]any{"type": "json_schema", "json_schema": map[string]any{
-			"name": "layout_review", "strict": true, "schema": findingsSchema()}},
-		Provider:    map[string]any{"data_collection": "deny", "require_parameters": true},
-		Temperature: 0,
-		MaxTokens:   4096,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("review: encode request: %w", err)
-	}
-	ctx, cancel := context.WithTimeout(ctx, o.timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.url, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("review: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+o.key)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Title", "Folio")
-	resp, err := o.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("review: openrouter request failed: %w", redactURLError(err))
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("review: read response: %w", err)
-	}
-	if len(raw) > maxResponseBytes {
-		return nil, errors.New("review: openrouter response too large")
-	}
-	var cr chatResponse
-	jsonErr := json.Unmarshal(raw, &cr)
-	if resp.StatusCode != http.StatusOK {
-		msg := ""
-		if jsonErr == nil && cr.Error != nil {
-			msg = ": " + short(cr.Error.Message)
-		}
-		return nil, fmt.Errorf("review: openrouter returned HTTP %d%s", resp.StatusCode, msg)
-	}
-	if jsonErr != nil {
-		return nil, errors.New("review: openrouter returned a malformed response")
-	}
-	if cr.Error != nil {
-		return nil, fmt.Errorf("review: openrouter error: %s", short(cr.Error.Message))
-	}
-	if len(cr.Choices) == 0 {
-		return nil, errors.New("review: openrouter returned no choices")
-	}
-	ch := cr.Choices[0]
-	if ch.FinishReason == "length" {
-		return nil, errors.New("review: the model answer was cut off (max_tokens)")
+		parts = append(parts, ai.Text(fmt.Sprintf("Page %d:", p.Number)), ai.PNG(img))
 	}
 	var out struct {
 		Findings []Finding `json:"findings"`
 	}
-	if err := json.Unmarshal([]byte(stripFences(ch.Message.Content)), &out); err != nil {
-		return nil, errors.New("review: the model answer is not the expected JSON")
+	_, err := o.ai.JSON(ctx, ai.Request{
+		Messages:   []ai.Message{{Role: "system", Content: systemPrompt}, {Role: "user", Content: parts}},
+		SchemaName: "layout_review", Schema: findingsSchema(), Strict: true, MaxTokens: 4096,
+	}, &out)
+	if err != nil {
+		return nil, fmt.Errorf("review: %w", err)
 	}
 	if out.Findings == nil {
 		out.Findings = []Finding{}
@@ -286,40 +190,4 @@ func downscalePNG(b []byte, maxWidth int) ([]byte, error) {
 		return nil, fmt.Errorf("encode PNG: %w", err)
 	}
 	return buf.Bytes(), nil
-}
-
-// stripFences removes a Markdown code fence some providers wrap JSON in.
-func stripFences(s string) string {
-	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(s, "```") {
-		return s
-	}
-	s = strings.TrimPrefix(s, "```")
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[i+1:]
-	}
-	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(s), "```"))
-}
-
-// short bounds an upstream error message and keeps printable characters only.
-func short(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return ' '
-	}, s)
-	if r := []rune(s); len(r) > 200 {
-		s = string(r[:200]) + "…"
-	}
-	return s
-}
-
-// redactURLError drops the request URL from transport errors (the URL holds
-// no secret today, but errors end up in logs).
-func redactURLError(err error) error {
-	if ue, ok := errors.AsType[*url.Error](err); ok {
-		return ue.Err
-	}
-	return err
 }
