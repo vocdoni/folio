@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Package seed embeds Folio's neutral starter content: the "example" brand
-// (with a generated text logo) and the starter templates. Apply stores them
-// through the normal catalog validation (including sample renders).
+// (with a generated text logo) and the starter templates. Apply stores them,
+// and later upgrades them, through the normal catalog validation (including
+// sample renders).
 package seed
 
 import (
 	"bytes"
-	"context"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
-	"github.com/vocdoni/folio/internal/assets"
-	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/model"
 )
 
@@ -23,6 +20,10 @@ var files embed.FS
 
 // Actor records seeded items.
 const Actor = "folio"
+
+// Version is the version of the embedded starter content. Bump it with every
+// change to brand/ or templates/, so Apply upgrades deployed instances.
+const Version = 2
 
 // LogoPlaceholderID is the logo asset id inside brand/example.json; Apply
 // replaces it with the id of the uploaded logo. Tests resolve it directly.
@@ -73,33 +74,4 @@ func Templates() ([]model.Template, error) {
 		out = append(out, t)
 	}
 	return out, nil
-}
-
-// Apply uploads the logo, creates the brand and every template as Actor.
-// The caller (serve startup) runs it once on an empty database and records
-// that in the meta table.
-func Apply(ctx context.Context, cat *catalog.Service, as *assets.Service) error {
-	logo, err := as.Upload(ctx, Actor, assets.UploadRequest{Name: "example-logo.svg", Description: "Example Co text logo",
-		ContentBase64: base64.StdEncoding.EncodeToString(Logo())})
-	if err != nil {
-		return fmt.Errorf("seed: logo: %w", err)
-	}
-	b, err := Brand()
-	if err != nil {
-		return err
-	}
-	b.Logo.AssetID = logo.ID
-	if _, err := cat.CreateBrand(ctx, Actor, b, "starter brand"); err != nil {
-		return fmt.Errorf("seed: brand: %w", err)
-	}
-	ts, err := Templates()
-	if err != nil {
-		return err
-	}
-	for _, t := range ts {
-		if _, err := cat.CreateTemplate(ctx, Actor, t, "starter template"); err != nil {
-			return fmt.Errorf("seed: template %s: %w", t.ID, err)
-		}
-	}
-	return nil
 }

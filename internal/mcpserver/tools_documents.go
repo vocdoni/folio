@@ -356,6 +356,10 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 			var me *model.Error
 			if errors.As(err, &me) && me.Code == model.ErrValidationFailed {
 				out.Findings = me.Details
+				if note := documents.PinnedVersionNote(ctx, d.Catalog, t.ID, in.TemplateVersion); note != "" {
+					c.Summary("invalid: %d finding(s); %s", len(out.Findings), note)
+					return out, nil
+				}
 				c.Summary("invalid: %d finding(s); fix the errors before render_document", len(out.Findings))
 				return out, nil
 			}

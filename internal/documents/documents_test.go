@@ -27,6 +27,9 @@ type fakeRenderer struct {
 func (f *fakeRenderer) Render(_ context.Context, req render.Request) (*render.Result, error) {
 	f.calls.Add(1)
 	time.Sleep(f.delay)
+	if req.Input.Markdown == "invalid" {
+		return nil, &model.Error{Code: model.ErrValidationFailed, Message: "1 problem(s) must be fixed before rendering"}
+	}
 	canon, sum, err := render.CanonicalInput(model.Ref{ID: req.Template.ID, Version: req.TemplateVersion}, model.Ref{ID: req.Brand.ID, Version: req.BrandVersion}, req.Input)
 	if err != nil {
 		return nil, err
@@ -310,5 +313,31 @@ func TestRevisionsCarryNoComputedValues(t *testing.T) {
 		if strings.Contains(string(raw), `"computed"`) {
 			t.Fatalf("output carries computed: %s", raw)
 		}
+	}
+}
+
+// A render pinned to an older template version that fails validation names
+// the current version (starter templates are upgraded in place).
+func TestPinnedOldVersionNamesTheLatest(t *testing.T) {
+	s, _, _ := setup(t)
+	ctx := context.Background()
+	cat := s.Resolver.(*catalog.Service)
+	tp, _, err := cat.ResolveTemplate(ctx, "proposal", 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp.Name = "P v2"
+	if _, err := cat.UpdateTemplate(ctx, "folio", "proposal", 1, tp, "starter upgrade"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Render(ctx, "alice", RenderRequest{TemplateID: "proposal", TemplateVersion: 1, Input: in("invalid")})
+	var me *model.Error
+	if !errors.As(err, &me) || me.Code != model.ErrValidationFailed ||
+		!strings.Contains(me.Message, "template proposal version 1 is not the latest: version 2 is current") {
+		t.Fatalf("pinned v1: %v", err)
+	}
+	_, err = s.Render(ctx, "alice", RenderRequest{TemplateID: "proposal", Input: in("invalid")})
+	if !errors.As(err, &me) || strings.Contains(me.Message, "not the latest") {
+		t.Fatalf("latest: %v", err)
 	}
 }

@@ -3,11 +3,14 @@
 package seed
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,9 +60,9 @@ func TestSeedContentIsWellFormed(t *testing.T) {
 	}
 }
 
-// TestApplySeedsThroughCatalog runs the real pipeline: every starter
-// template's sample renders with no warnings other than placeholders.
-func TestApplySeedsThroughCatalog(t *testing.T) {
+// realEnv is a database with a catalog over the real render pipeline.
+func realEnv(t *testing.T) (*store.DB, *catalog.Service, *assets.Service) {
+	t.Helper()
 	pandoc, err := sandbox.LookupTool("pandoc")
 	if err != nil {
 		t.Skipf("SKIPPING: %v (set FOLIO_PANDOC)", err)
@@ -74,7 +77,7 @@ func TestApplySeedsThroughCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 	blobs, _ := store.NewBlobs(filepath.Join(dir, "blobs"), time.Now)
 	rt, err := bundled.Materialize(filepath.Join(os.TempDir(), "folio-test-runtime"))
 	if err != nil {
@@ -89,8 +92,17 @@ func TestApplySeedsThroughCatalog(t *testing.T) {
 	p := render.NewPipeline(render.PipelineConfig{Engine: e, Queue: render.NewQueue(2, 8), Assets: as,
 		Limits: validate.Limits{MaxMarkdownBytes: 1 << 20, MaxNesting: 32, MaxTableCells: 10000}, MaxPages: 200})
 	cat := &catalog.Service{DB: db, Blobs: blobs, Renderer: p, Assets: as, PackagesDir: rt.PackagesDir, Now: time.Now, PreviewTTL: time.Hour, PreviewPagesMax: 3}
-	if err := Apply(ctx, cat, as); err != nil {
-		t.Fatal(err)
+	return db, cat, as
+}
+
+// TestApplySeedsThroughCatalog runs the real pipeline: every starter
+// template's sample renders with no warnings other than placeholders.
+func TestApplySeedsThroughCatalog(t *testing.T) {
+	ctx := context.Background()
+	db, cat, as := realEnv(t)
+	res, err := Apply(ctx, db, cat, as, time.Now(), quiet())
+	if err != nil || !res.Seeded {
+		t.Fatalf("%+v %v", res, err)
 	}
 	b, _, err := cat.ResolveBrand(ctx, "example", 0)
 	if err != nil || b.Logo.AssetID == LogoPlaceholderID {
@@ -100,5 +112,63 @@ func TestApplySeedsThroughCatalog(t *testing.T) {
 		if _, v, err := cat.ResolveTemplate(ctx, id, 0, false); err != nil || v != 1 {
 			t.Errorf("template %s: v%d %v", id, v, err)
 		}
+	}
+}
+
+// TestUpgradeFromSeedV1 (A-AC2, F2): a database seeded with the v1 starters
+// restarts with seed v2. The starters whose spec changed get version 2 by
+// folio through the real catalog (validation and sample render); a starter
+// whose latest version alice created stays at her version and is logged; the
+// unchanged starters and the brand keep version 1 and the logo asset; and
+// seed_version becomes 2.
+func TestUpgradeFromSeedV1(t *testing.T) {
+	ctx := context.Background()
+	db, cat, as := realEnv(t)
+	seedV1(t, db, cat, as, "alice")
+	logoBefore, _, err := cat.ResolveBrand(ctx, "example", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	res, err := Apply(ctx, db, cat, as, time.Now(), slog.New(slog.NewTextHandler(&logs, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(res.Upgraded, ",") != "template:proposal,template:sow" || strings.Join(res.Skipped, ",") != "template:quote" ||
+		len(res.Created) != 0 || res.Seeded {
+		t.Fatalf("result = %+v", res)
+	}
+	want := map[string][2]any{"proposal": {2, Actor}, "sow": {2, Actor}, "quote": {2, "alice"},
+		"requirements": {1, Actor}, "technical-report": {1, Actor}}
+	for id, w := range want {
+		it, err := cat.GetTemplate(ctx, id, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if it.LatestVersion != w[0] || latestBy(it) != w[1] {
+			t.Errorf("%s: v%d by %s, want v%d by %s", id, it.LatestVersion, latestBy(it), w[0], w[1])
+		}
+	}
+	it, _ := cat.GetTemplate(ctx, "proposal", 0)
+	if n := it.Versions[1].Note; n != "starter upgrade (seed v2)" {
+		t.Errorf("note = %q", n)
+	}
+	if v1, err := cat.GetTemplate(ctx, "proposal", 1); err != nil || !strings.Contains(string(v1.Spec), "payment_pct") {
+		t.Errorf("version 1 must stay readable: %v", err)
+	}
+	b, bv, err := cat.ResolveBrand(ctx, "example", 0)
+	if err != nil || bv != 1 || b.Logo.AssetID != logoBefore.Logo.AssetID {
+		t.Fatalf("brand: v%d logo %s (was %s) %v", bv, b.Logo.AssetID, logoBefore.Logo.AssetID, err)
+	}
+	if v := meta(t, db, VersionKey); v != "2" {
+		t.Fatalf("seed_version = %q", v)
+	}
+	l := logs.String()
+	if !strings.Contains(l, "starter upgrade skipped") || !strings.Contains(l, "id=quote") || !strings.Contains(l, "created_by=alice") ||
+		!strings.Contains(l, "seed_version=2") || !strings.Contains(l, "msg=\"starter upgrade\" kind=template id=proposal version=2") {
+		t.Fatalf("logs:\n%s", l)
+	}
+	if res, err := Apply(ctx, db, cat, as, time.Now(), quiet()); err != nil || len(res.Upgraded)+len(res.Skipped) != 0 {
+		t.Fatalf("a second start must not upgrade again: %+v %v", res, err)
 	}
 }

@@ -235,11 +235,12 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	}
 	seeded := false
 	if cfg.Seed {
-		if seeded, err = seed.ApplyOnce(ctx, db, cat, as, o.Now()); err != nil {
+		res, err := seed.Apply(ctx, db, cat, as, o.Now(), log)
+		if err != nil {
 			return nil, err
 		}
-		if seeded {
-			log.Info("seeded starter content", "brand", "example", "templates", strings.Join(seed.TemplateIDs, ","))
+		if seeded = res.Seeded; seeded {
+			log.Info("seeded starter content", "brand", "example", "templates", strings.Join(seed.TemplateIDs, ","), "seed_version", seed.Version)
 		}
 	}
 	packages, err := bundled.VendoredPackages(rt.PackagesDir)
