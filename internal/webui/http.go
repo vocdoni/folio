@@ -245,8 +245,8 @@ func (s *Server) api(mux *http.ServeMux, pattern string, rt route, h http.Handle
 }
 
 func (s *Server) recordUI(rt route, n *note, rw *recWriter, start time.Time) {
-	if s.o.Activity == nil {
-		return
+	if s.o.Activity == nil || (rt.public && rw.code == "rate_limited") {
+		return // a refused sign-in attempt is not an action: anonymous callers must not write rows
 	}
 	outcome, code := activity.OutcomeOK, ""
 	if rw.status >= 400 {

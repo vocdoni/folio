@@ -362,6 +362,41 @@ func TestLoginIsRecorded(t *testing.T) {
 	}
 }
 
+// TestRateLimitedLoginIsNotRecorded: attempts the limiter refuses never write
+// activity rows; only the five wrong passwords it allowed do.
+func TestRateLimitedLoginIsNotRecorded(t *testing.T) {
+	var rec *activity.Recorder
+	f := newFixture(t, func(o *Options) {
+		rec = activity.NewRecorder(o.DB, nil, o.Logger, o.Now)
+		o.Activity = rec
+	})
+	limited := 0
+	for range 12 {
+		w := f.do(http.MethodPost, "/ui/api/login", LoginIn{Password: "not the password"}, nil)
+		if w.Code == http.StatusTooManyRequests {
+			limited++
+		}
+	}
+	if limited == 0 {
+		t.Fatal("expected some attempts to be rate limited")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec.Run(ctx)
+	rows, _, err := activity.List(context.Background(), f.opts.DB, activity.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 12-limited {
+		t.Fatalf("%d rows for %d allowed attempts", len(rows), 12-limited)
+	}
+	for _, r := range rows {
+		if r.Action != "ui.login" || r.ErrorCode != "unauthorized" {
+			t.Fatalf("unexpected row %+v", r)
+		}
+	}
+}
+
 // testLogger discards logs unless FOLIO_TEST_LOG is set.
 func testLogger() *slog.Logger {
 	if os.Getenv("FOLIO_TEST_LOG") != "" {
