@@ -226,3 +226,19 @@ func TestTemplatePreviewBlobFailureLeavesNoVersion(t *testing.T) {
 		t.Fatal("template exists after a failed preview blob write")
 	}
 }
+
+// Templates written for the retired budget total-row labels stay valid; other
+// unknown label keys are still rejected.
+func TestRetiredLabelKeysAccepted(t *testing.T) {
+	s := &Service{}
+	tp := tmpl()
+	tp.Labels = map[string]map[string]string{"en": {"budget.total": "Grand total", "budget.amount": "Price"}}
+	if fs := s.ValidateTemplate(tp); model.HasErrors(fs) {
+		t.Fatalf("retired key rejected: %+v", fs)
+	}
+	tp.Labels["en"]["budget.grand"] = "x"
+	fs := s.ValidateTemplate(tp)
+	if len(fs) != 1 || fs[0].Path != "/labels/en/budget.grand" {
+		t.Fatalf("unknown key: %+v", fs)
+	}
+}

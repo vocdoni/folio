@@ -7,7 +7,8 @@ Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, 
 Each recipe names the tools to call in order. The starter templates
 (`proposal`, `quote`, `sow`, `requirements`, `technical-report`) exist on a
 fresh instance; an operator may have renamed, archived or replaced them, so
-always start with `list_templates`.
+always start with `list_templates`. Folio never changes your content or
+figures: send every value exactly as it should appear, totals included.
 
 ## Proposal
 
@@ -15,15 +16,16 @@ always start with `list_templates`.
 2. Start from `body_skeleton`. Keep the required sections (Executive
    summary, Scope, Budget); add Context, Approach, Plan, Deliverables,
    Terms and Acceptance when you have content for them.
-3. Put every price in `data.budget.items` (quantities and prices as
-   strings). Add `data.milestones` with `payment_pct` values that sum to 100
-   when the plan uses `::: {.folio-milestones show_payments=true}`, and
-   `data.deliverables` whose `id`s the milestones reference.
+3. Put every line in `data.budget.items` and the subtotal, tax and total
+   rows in `data.budget.totals`, all as strings written exactly as they
+   should appear (`"€18,280.00"`). Work the figures out with the user before
+   calling Folio: Folio prints them as sent and never checks the sums. Add
+   `data.milestones` (with a `payment` text per milestone when the plan has
+   payments) and `data.deliverables` whose `id`s the milestones reference.
 4. Metadata: `title`, `date`, `language` and `client` (required by this
    template), plus `project`, `reference`, `valid_until` when known.
 5. `validate_document`, fix every error, then `render_document` with an
-   `idempotency_key`. Share the PDF and DOCX links and quote the total from
-   `computed.budget.total`.
+   `idempotency_key`. Share the PDF and DOCX links.
 
 The template's `sample` is a complete proposal: copy its shape.
 
@@ -39,24 +41,31 @@ acceptance. This is a complete `render_document` call for the starter
   "idempotency_key": "quote-acme-hosting-2026-10-18",
   "metadata": {"title": "Hosting and support quote", "date": "2026-10-18", "language": "en",
                "client": "ACME Corp", "reference": "Q-2026-118", "valid_until": "2026-11-17"},
-  "markdown": "# Summary\n\nManaged hosting and support for the ACME website for one year.\n\n::: folio-info\n:::\n\n# Items\n\n::: folio-budget\n:::\n\n# Payment terms\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Validity\n\nThis quote is valid for 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+  "markdown": "# Summary\n\nManaged hosting and support for the ACME website for one year.\n\n::: folio-info\n:::\n\n# Items\n\n::: folio-budget\n:::\n\n# Payment terms\n\n::: folio-milestones\n:::\n\n# Validity\n\nThis quote is valid for 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
   "data": {
-    "budget": {"currency": "EUR", "tax_rate": "21", "items": [
-      {"description": "Managed hosting", "quantity": "12", "unit": "month", "unit_price": "180"},
-      {"description": "Support hours", "quantity": "20", "unit": "hour", "unit_price": "85", "discount_pct": "10"}
-    ]},
-    "milestones": [{"name": "Order", "payment_pct": "50"}, {"name": "Go-live", "payment_pct": "50"}],
+    "budget": {
+      "items": [
+        {"description": "Managed hosting", "quantity": "12", "unit": "month", "unit_price": "€180.00", "amount": "€2,160.00"},
+        {"description": "Support hours", "quantity": "20", "unit": "hour", "unit_price": "€85.00", "discount": "10%", "amount": "€1,530.00"}
+      ],
+      "totals": [
+        {"label": "Subtotal", "amount": "€3,690.00"},
+        {"label": "VAT (21%)", "amount": "€774.90"},
+        {"label": "Total", "amount": "€4,464.90", "emphasis": true}
+      ]
+    },
+    "milestones": [{"name": "Order", "payment": "50% · €2,232.45"}, {"name": "Go-live", "payment": "50% · €2,232.45"}],
     "signatures": [{"name": "Jane Doe", "role": "CEO", "organization": "ACME Corp"},
                    {"name": "Alex Smith", "role": "Account manager", "organization": "Example Co"}]
   }
 }
 ```
 
-Folio computes `subtotal` 3690.00, tax 774.90 and `total` 4464.90, and two
-payments of 2232.45. For a Spanish or Catalan quote set `language` to `es`
-or `ca` and write the headings in that language (`Resumen`, `Conceptos`, …):
-the template's section aliases accept them and amounts are formatted as
-`4.464,90 €`.
+Folio prints these figures exactly as written; the arithmetic (12 × €180.00,
+20 × €85.00 less 10%, VAT and the two halves) is yours. For a Spanish or
+Catalan quote set `language` to `es` or `ca`, write the headings in that
+language (`Resumen`, `Conceptos`, …), which the template's section aliases
+accept, and write the figures the local way (`4.464,90 €`).
 
 ## Statement of work
 
@@ -67,7 +76,8 @@ the template's section aliases accept them and amounts are formatted as
    `data.milestones[].deliverables`, so the timeline and the deliverables
    table agree.
 3. Put out-of-scope items in their own section: it prevents disputes later.
-4. Fees: `data.budget`; payment milestones through `payment_pct`.
+4. Fees: `data.budget` with your own `totals` rows; payment terms as the
+   `payment` text of each milestone (`"25% · €7,139.00"`).
 5. Validate, render, review the pages with `include_previews="all"`, share.
 
 ## Revise a colleague's document

@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
@@ -128,6 +130,10 @@ func CompileSchemas(t model.Template) (*Schemas, []model.Finding) {
 
 var printer = message.NewPrinter(language.English)
 
+// FigureHint is attached to data findings where a JSON number was sent for a
+// string: component values are rendered verbatim, so figures are strings.
+const FigureHint = `send figures as strings exactly as they should appear (e.g. "€1,234.50")`
+
 func schemaFindings(err error, prefix string) []model.Finding {
 	var ve *jsonschema.ValidationError
 	if !errors.As(err, &ve) {
@@ -141,8 +147,12 @@ func schemaFindings(err error, prefix string) []model.Finding {
 			for _, tok := range e.InstanceLocation {
 				p += "/" + strings.ReplaceAll(strings.ReplaceAll(tok, "~", "~0"), "/", "~1")
 			}
-			out = append(out, model.Finding{Code: model.CodeSchemaViolation, Severity: model.SeverityError, Path: p,
-				Message: e.ErrorKind.LocalizedString(printer)})
+			f := model.Finding{Code: model.CodeSchemaViolation, Severity: model.SeverityError, Path: p,
+				Message: e.ErrorKind.LocalizedString(printer)}
+			if k, ok := e.ErrorKind.(*kind.Type); ok && strings.HasPrefix(prefix, "/data") && k.Got == "number" && slices.Contains(k.Want, "string") {
+				f.Hint = FigureHint
+			}
+			out = append(out, f)
 		}
 		for _, c := range e.Causes {
 			walk(c)
@@ -169,7 +179,9 @@ func (s *Schemas) ValidateMetadata(meta any) []model.Finding {
 }
 
 // ValidateData validates data against the template data schema and, for
-// each component used, data.<component> against the component schema.
+// each component used, data.<component> against the component schema. A
+// violation found by both (a data_schema that references the component
+// schema) is reported once.
 func (s *Schemas) ValidateData(data map[string]any, uses []components.Use) []model.Finding {
 	var out []model.Finding
 	if s.data != nil {
@@ -190,6 +202,20 @@ func (s *Schemas) ValidateData(data map[string]any, uses []components.Use) []mod
 		}
 		if err := sc.Validate(v); err != nil {
 			out = append(out, schemaFindings(err, "/data/"+u.Name)...)
+		}
+	}
+	return dedupe(out)
+}
+
+// dedupe drops repeated findings (same code, path and message), keeping order.
+func dedupe(fs []model.Finding) []model.Finding {
+	seen := map[[3]string]bool{}
+	out := fs[:0]
+	for _, f := range fs {
+		k := [3]string{f.Code, f.Path, f.Message}
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, f)
 		}
 	}
 	return out

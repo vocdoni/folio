@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -91,21 +92,34 @@ func TestReferenceDOCX(t *testing.T) {
 }
 
 func TestResolveLabels(t *testing.T) {
-	l, num := ResolveLabels("es", map[string]map[string]string{"es": {"budget.total": "Importe total", "bogus": "x"}})
-	if l["budget.total"] != "Importe total" || l["budget.tax"] != "IVA" || num != "es" || l["bogus"] != "" {
-		t.Fatalf("es: %v %s", l["budget.total"], num)
+	l := ResolveLabels("es", map[string]map[string]string{"es": {"budget.amount": "Importe total", "budget.total": "x", "bogus": "x"}})
+	if l["budget.amount"] != "Importe total" || l["budget.unit_price"] != "Precio unitario" || l["bogus"] != "" || l["budget.total"] != "" {
+		t.Fatalf("es: %v", l)
 	}
-	l, num = ResolveLabels("fr", map[string]map[string]string{"fr": {"budget.total": "Total TTC"}})
-	if l["budget.total"] != "Total" || num != "en" {
-		t.Fatalf("incomplete fr must fall back to en: %v %s", l["budget.total"], num)
+	l = ResolveLabels("fr", map[string]map[string]string{"fr": {"budget.amount": "Montant"}})
+	if l["budget.amount"] != "Amount" {
+		t.Fatalf("incomplete fr must fall back to en: %v", l["budget.amount"])
 	}
-	full := map[string]string{}
+	full := map[string]string{"budget.total": "Total TTC"}
 	for _, k := range LabelKeys {
 		full[k] = "fr-" + k
 	}
-	l, num = ResolveLabels("fr", map[string]map[string]string{"fr": full})
-	if l["budget.total"] != "fr-budget.total" || num != "en" {
-		t.Fatalf("complete fr: %v %s", l["budget.total"], num)
+	l = ResolveLabels("fr", map[string]map[string]string{"fr": full})
+	if l["budget.amount"] != "fr-budget.amount" || l["budget.total"] != "" || len(l) != len(LabelKeys) {
+		t.Fatalf("complete fr: %v", l)
+	}
+}
+
+// The budget total-row labels were retired with Folio-computed totals: they
+// are no longer label keys, but templates that carry them stay valid.
+func TestRetiredLabelKeys(t *testing.T) {
+	for _, k := range RetiredLabelKeys {
+		if slices.Contains(LabelKeys, k) {
+			t.Errorf("%s is still a label key", k)
+		}
+	}
+	if len(RetiredLabelKeys) != 3 {
+		t.Fatalf("retired keys = %v", RetiredLabelKeys)
 	}
 }
 

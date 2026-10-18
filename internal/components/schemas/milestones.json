@@ -11,7 +11,7 @@
       "duration": {"type": "string", "maxLength": 64},
       "description": {"type": "string", "maxLength": 2000},
       "deliverables": {"type": "array", "items": {"type": "string", "maxLength": 64}},
-      "payment_pct": {"type": ["string", "number"]}
+      "payment": {"type": "string", "maxLength": 200}
     }
   }
 }

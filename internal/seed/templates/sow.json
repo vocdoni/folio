@@ -133,9 +133,9 @@
     "info"
   ],
   "strict": false,
-  "body_skeleton": "# Objectives\n\n- TODO\n\n::: folio-info\n:::\n\n# Scope of work\n\n- TODO\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Timeline\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Fees\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+  "body_skeleton": "# Objectives\n\n- TODO\n\n::: folio-info\n:::\n\n# Scope of work\n\n- TODO\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Timeline\n\n::: folio-milestones\n:::\n\n# Fees\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
   "sample": {
-    "markdown": "# Background\n\nACME Corp operates a fleet of delivery vehicles and wants to replace its spreadsheet-based route planning with a managed planning tool. This statement of work defines what Example Co will deliver under the master services agreement between both parties.\n\n::: folio-info\n:::\n\n# Objectives\n\n- Cut the time spent planning daily routes from three hours to under thirty minutes\n- Reduce average kilometres driven per delivery by at least 8%\n- Give dispatchers a single view of all vehicles and orders\n\n# Scope of work\n\nExample Co will:\n\n1. Analyse the current planning process and data sources\n2. Configure and integrate the planning tool with ACME's order system\n3. Train twelve dispatchers and two administrators\n4. Provide four weeks of hypercare after go-live\n\n# Out of scope\n\n- Hardware, such as in-vehicle tablets\n- Changes to ACME's order management system beyond the agreed integration\n- Driver mobile application\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Timeline\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Fees\n\n::: folio-budget\n:::\n\n# Acceptance\n\nEach deliverable is accepted when it meets its acceptance criterion or when ACME has not reported defects within ten working days of delivery.\n\n::: folio-signatures\n:::\n\n# Change control\n\nEither party may request a change in writing. Example Co will estimate its effect on scope, schedule and fees within five working days. No change takes effect until both parties sign the change request.\n",
+    "markdown": "# Background\n\nACME Corp operates a fleet of delivery vehicles and wants to replace its spreadsheet-based route planning with a managed planning tool. This statement of work defines what Example Co will deliver under the master services agreement between both parties.\n\n::: folio-info\n:::\n\n# Objectives\n\n- Cut the time spent planning daily routes from three hours to under thirty minutes\n- Reduce average kilometres driven per delivery by at least 8%\n- Give dispatchers a single view of all vehicles and orders\n\n# Scope of work\n\nExample Co will:\n\n1. Analyse the current planning process and data sources\n2. Configure and integrate the planning tool with ACME's order system\n3. Train twelve dispatchers and two administrators\n4. Provide four weeks of hypercare after go-live\n\n# Out of scope\n\n- Hardware, such as in-vehicle tablets\n- Changes to ACME's order management system beyond the agreed integration\n- Driver mobile application\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Timeline\n\n::: folio-milestones\n:::\n\n# Fees\n\n::: folio-budget\n:::\n\n# Acceptance\n\nEach deliverable is accepted when it meets its acceptance criterion or when ACME has not reported defects within ten working days of delivery.\n\n::: folio-signatures\n:::\n\n# Change control\n\nEither party may request a change in writing. Example Co will estimate its effect on scope, schedule and fees within five working days. No change takes effect until both parties sign the change request.\n",
     "metadata": {
       "title": "Route planning statement of work",
       "date": "2026-10-18",
@@ -148,32 +148,49 @@
     },
     "data": {
       "budget": {
-        "currency": "EUR",
-        "tax_rate": "21",
         "items": [
           {
             "description": "Process analysis",
             "quantity": "5",
             "unit": "day",
-            "unit_price": "700"
+            "unit_price": "€700.00",
+            "amount": "€3,500.00"
           },
           {
             "description": "Configuration and integration",
             "quantity": "18",
             "unit": "day",
-            "unit_price": "700"
+            "unit_price": "€700.00",
+            "amount": "€12,600.00"
           },
           {
             "description": "Training sessions",
             "quantity": "3",
             "unit": "session",
-            "unit_price": "900"
+            "unit_price": "€900.00",
+            "amount": "€2,700.00"
           },
           {
             "description": "Hypercare support",
             "quantity": "4",
             "unit": "week",
-            "unit_price": "1200"
+            "unit_price": "€1,200.00",
+            "amount": "€4,800.00"
+          }
+        ],
+        "totals": [
+          {
+            "label": "Subtotal",
+            "amount": "€23,600.00"
+          },
+          {
+            "label": "Tax (21%)",
+            "amount": "€4,956.00"
+          },
+          {
+            "label": "Total",
+            "amount": "€28,556.00",
+            "emphasis": true
           }
         ],
         "notes": "Fees are fixed for the scope above."
@@ -185,7 +202,7 @@
           "deliverables": [
             "D1"
           ],
-          "payment_pct": "25"
+          "payment": "25% · €7,139.00"
         },
         {
           "name": "Integration live in staging",
@@ -193,7 +210,7 @@
           "deliverables": [
             "D2"
           ],
-          "payment_pct": "35"
+          "payment": "35% · €9,994.60"
         },
         {
           "name": "Training delivered and go-live",
@@ -201,7 +218,7 @@
           "deliverables": [
             "D3"
           ],
-          "payment_pct": "25"
+          "payment": "25% · €7,139.00"
         },
         {
           "name": "End of hypercare",
@@ -209,7 +226,7 @@
           "deliverables": [
             "D4"
           ],
-          "payment_pct": "15"
+          "payment": "15% · €4,283.40"
         }
       ],
       "deliverables": [

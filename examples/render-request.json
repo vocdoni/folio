@@ -139,9 +139,9 @@
       "info"
     ],
     "strict": false,
-    "body_skeleton": "# Executive summary\n\nTODO\n\n::: folio-info\n:::\n\n# Scope\n\n- TODO\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+    "body_skeleton": "# Executive summary\n\nTODO\n\n::: folio-info\n:::\n\n# Scope\n\n- TODO\n\n# Plan\n\n::: folio-milestones\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
     "sample": {
-      "markdown": "# Executive summary\n\nExample Co proposes to redesign the ACME public website so that customers find products faster and the team can publish content without developer help.\n\n::: folio-info\n:::\n\n# Context\n\nACME's current site was built in 2019. Analytics show that 60% of visitors leave from the product listing pages.\n\n# Scope\n\n- Information architecture and navigation\n- Visual design system and page templates\n- Content migration of 120 product pages\n- Analytics and accessibility review (WCAG 2.2 AA)\n\n# Approach\n\nWe work in two-week iterations with a demo at the end of each one.\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Terms\n\nPrices exclude travel. Invoices are payable within 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+      "markdown": "# Executive summary\n\nExample Co proposes to redesign the ACME public website so that customers find products faster and the team can publish content without developer help.\n\n::: folio-info\n:::\n\n# Context\n\nACME's current site was built in 2019. Analytics show that 60% of visitors leave from the product listing pages.\n\n# Scope\n\n- Information architecture and navigation\n- Visual design system and page templates\n- Content migration of 120 product pages\n- Analytics and accessibility review (WCAG 2.2 AA)\n\n# Approach\n\nWe work in two-week iterations with a demo at the end of each one.\n\n# Plan\n\n::: folio-milestones\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Terms\n\nPrices exclude travel. Invoices are payable within 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
       "metadata": {
         "title": "Website redesign proposal",
         "date": "2026-10-18",
@@ -154,33 +154,50 @@
       },
       "data": {
         "budget": {
-          "currency": "EUR",
-          "tax_rate": "21",
           "items": [
             {
               "description": "Discovery and information architecture",
               "quantity": "1",
               "unit": "project",
-              "unit_price": "4800"
+              "unit_price": "€4,800.00",
+              "amount": "€4,800.00"
             },
             {
               "description": "Design system and templates",
               "quantity": "12",
               "unit": "day",
-              "unit_price": "650"
+              "unit_price": "€650.00",
+              "amount": "€7,800.00"
             },
             {
               "description": "Content migration",
               "quantity": "120",
               "unit": "page",
-              "unit_price": "35",
-              "discount_pct": "10"
+              "unit_price": "€35.00",
+              "discount": "10%",
+              "amount": "€3,780.00"
             },
             {
               "description": "Accessibility review",
               "quantity": "1",
               "unit": "project",
-              "unit_price": "1900"
+              "unit_price": "€1,900.00",
+              "amount": "€1,900.00"
+            }
+          ],
+          "totals": [
+            {
+              "label": "Subtotal",
+              "amount": "€18,280.00"
+            },
+            {
+              "label": "Tax (21%)",
+              "amount": "€3,838.80"
+            },
+            {
+              "label": "Total",
+              "amount": "€22,118.80",
+              "emphasis": true
             }
           ],
           "notes": "Valid for 60 days from the proposal date."
@@ -192,7 +209,7 @@
             "deliverables": [
               "D1"
             ],
-            "payment_pct": "30"
+            "payment": "30% · €6,635.64"
           },
           {
             "name": "Design system approved",
@@ -200,7 +217,7 @@
             "deliverables": [
               "D2"
             ],
-            "payment_pct": "40"
+            "payment": "40% · €8,847.52"
           },
           {
             "name": "Launch",
@@ -209,7 +226,7 @@
               "D3",
               "D4"
             ],
-            "payment_pct": "30"
+            "payment": "30% · €6,635.64"
           }
         ],
         "deliverables": [
@@ -294,7 +311,7 @@
   "brand_version": 1,
   "assets_dir": "assets",
   "document": {
-    "markdown": "# Executive summary\n\nExample Co proposes to redesign the ACME public website so that customers find products faster and the team can publish content without developer help.\n\n::: folio-info\n:::\n\n# Context\n\nACME's current site was built in 2019. Analytics show that 60% of visitors leave from the product listing pages.\n\n# Scope\n\n- Information architecture and navigation\n- Visual design system and page templates\n- Content migration of 120 product pages\n- Analytics and accessibility review (WCAG 2.2 AA)\n\n# Approach\n\nWe work in two-week iterations with a demo at the end of each one.\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Terms\n\nPrices exclude travel. Invoices are payable within 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+    "markdown": "# Executive summary\n\nExample Co proposes to redesign the ACME public website so that customers find products faster and the team can publish content without developer help.\n\n::: folio-info\n:::\n\n# Context\n\nACME's current site was built in 2019. Analytics show that 60% of visitors leave from the product listing pages.\n\n# Scope\n\n- Information architecture and navigation\n- Visual design system and page templates\n- Content migration of 120 product pages\n- Analytics and accessibility review (WCAG 2.2 AA)\n\n# Approach\n\nWe work in two-week iterations with a demo at the end of each one.\n\n# Plan\n\n::: folio-milestones\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Terms\n\nPrices exclude travel. Invoices are payable within 30 days.\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
     "metadata": {
       "title": "Website redesign proposal",
       "date": "2026-10-18",
@@ -307,33 +324,50 @@
     },
     "data": {
       "budget": {
-        "currency": "EUR",
-        "tax_rate": "21",
         "items": [
           {
             "description": "Discovery and information architecture",
             "quantity": "1",
             "unit": "project",
-            "unit_price": "4800"
+            "unit_price": "€4,800.00",
+            "amount": "€4,800.00"
           },
           {
             "description": "Design system and templates",
             "quantity": "12",
             "unit": "day",
-            "unit_price": "650"
+            "unit_price": "€650.00",
+            "amount": "€7,800.00"
           },
           {
             "description": "Content migration",
             "quantity": "120",
             "unit": "page",
-            "unit_price": "35",
-            "discount_pct": "10"
+            "unit_price": "€35.00",
+            "discount": "10%",
+            "amount": "€3,780.00"
           },
           {
             "description": "Accessibility review",
             "quantity": "1",
             "unit": "project",
-            "unit_price": "1900"
+            "unit_price": "€1,900.00",
+            "amount": "€1,900.00"
+          }
+        ],
+        "totals": [
+          {
+            "label": "Subtotal",
+            "amount": "€18,280.00"
+          },
+          {
+            "label": "Tax (21%)",
+            "amount": "€3,838.80"
+          },
+          {
+            "label": "Total",
+            "amount": "€22,118.80",
+            "emphasis": true
           }
         ],
         "notes": "Valid for 60 days from the proposal date."
@@ -345,7 +379,7 @@
           "deliverables": [
             "D1"
           ],
-          "payment_pct": "30"
+          "payment": "30% · €6,635.64"
         },
         {
           "name": "Design system approved",
@@ -353,7 +387,7 @@
           "deliverables": [
             "D2"
           ],
-          "payment_pct": "40"
+          "payment": "40% · €8,847.52"
         },
         {
           "name": "Launch",
@@ -362,7 +396,7 @@
             "D3",
             "D4"
           ],
-          "payment_pct": "30"
+          "payment": "30% · €6,635.64"
         }
       ],
       "deliverables": [

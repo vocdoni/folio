@@ -160,7 +160,7 @@ func (s *Service) ValidateTemplate(t model.Template) []model.Finding {
 	}
 	for lang, table := range t.Labels {
 		for k := range table {
-			if !slices.Contains(brandkit.LabelKeys, k) {
+			if !slices.Contains(brandkit.LabelKeys, k) && !slices.Contains(brandkit.RetiredLabelKeys, k) {
 				fs = append(fs, bad("/labels/"+lang+"/"+k, "unknown label key"))
 			}
 		}

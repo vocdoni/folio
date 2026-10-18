@@ -295,20 +295,24 @@ retryable, details[]}`; each detail has a JSON pointer `path` and a `hint`.
     "client": "Northwind Traders", "project": "Shop redesign",
     "reference": "P-2026-07", "valid_until": "2026-11-30"
   },
-  "markdown": "# Executive summary\n\nNorthwind Traders wants a faster online shop. We propose a redesign delivered in three milestones.\n\n::: folio-info\n:::\n\n# Scope\n\n- Discovery workshop with the sales team\n- Design system and storefront templates\n- Migration of 300 product pages\n\n# Plan\n\n::: {.folio-milestones show_payments=true}\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
+  "markdown": "# Executive summary\n\nNorthwind Traders wants a faster online shop. We propose a redesign delivered in three milestones.\n\n::: folio-info\n:::\n\n# Scope\n\n- Discovery workshop with the sales team\n- Design system and storefront templates\n- Migration of 300 product pages\n\n# Plan\n\n::: folio-milestones\n:::\n\n# Deliverables\n\n::: folio-deliverables\n:::\n\n# Budget\n\n::: folio-budget\n:::\n\n# Acceptance\n\n::: folio-signatures\n:::\n",
   "data": {
     "budget": {
-      "currency": "EUR", "tax_rate": "21",
       "items": [
-        {"description": "Discovery workshop", "quantity": "2", "unit": "day", "unit_price": "950"},
-        {"description": "Design and build", "quantity": "18", "unit": "day", "unit_price": "720", "discount_pct": "5"},
-        {"description": "Hosting (VAT exempt)", "quantity": "12", "unit": "month", "unit_price": "45", "tax_rate": "0"}
+        {"description": "Discovery workshop", "quantity": "2", "unit": "day", "unit_price": "€950.00", "amount": "€1,900.00"},
+        {"description": "Design and build", "quantity": "18", "unit": "day", "unit_price": "€720.00", "discount": "5%", "amount": "€12,312.00"},
+        {"description": "Hosting (VAT exempt)", "quantity": "12", "unit": "month", "unit_price": "€45.00", "amount": "€540.00"}
+      ],
+      "totals": [
+        {"label": "Subtotal", "amount": "€14,752.00"},
+        {"label": "VAT (21% on €14,212.00)", "amount": "€2,984.52"},
+        {"label": "Total", "amount": "€17,736.52", "emphasis": true}
       ]
     },
     "milestones": [
-      {"name": "Kick-off", "date": "2026-11-02", "deliverables": ["D1"], "payment_pct": "30"},
-      {"name": "Beta", "date": "2026-12-14", "deliverables": ["D2"], "payment_pct": "40"},
-      {"name": "Launch", "date": "2027-01-25", "deliverables": ["D3"], "payment_pct": "30"}
+      {"name": "Kick-off", "date": "2026-11-02", "deliverables": ["D1"], "payment": "30% · €5,320.96"},
+      {"name": "Beta", "date": "2026-12-14", "deliverables": ["D2"], "payment": "40% · €7,094.61"},
+      {"name": "Launch", "date": "2027-01-25", "deliverables": ["D3"], "payment": "30% · €5,320.95"}
     ],
     "deliverables": [
       {"id": "D1", "name": "Discovery report", "acceptance": "Approved by the sales lead"},
@@ -421,8 +425,9 @@ placeholder:
     "sample": {
       "markdown": "# Summary\n\nWe will deliver the work described below.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
       "metadata": {"title": "Sample quote", "date": "2026-10-18", "language": "en", "client": "Example client"},
-      "data": {"budget": {"currency": "EUR", "tax_rate": "21",
-                          "items": [{"description": "Design", "quantity": "2", "unit_price": "1500"}]}}
+      "data": {"budget": {"items": [{"description": "Design", "quantity": "2", "unit": "day", "unit_price": "€1,500.00", "amount": "€3,000.00"}],
+                          "totals": [{"label": "VAT (21%)", "amount": "€630.00"},
+                                     {"label": "Total", "amount": "€3,630.00", "emphasis": true}]}}
     }
   },
   "note": "first version"
@@ -450,8 +455,9 @@ Render a first quote with the new template:
   "idempotency_key": "quote-001",
   "metadata": {"title": "Website maintenance", "date": "2026-10-18", "language": "en", "client": "Globex"},
   "markdown": "# Summary\n\nMonthly maintenance of the Globex website.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
-  "data": {"budget": {"currency": "EUR", "tax_rate": "21",
-                      "items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "300"}]}}
+  "data": {"budget": {"items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "€300.00", "amount": "€3,600.00"}],
+                      "totals": [{"label": "VAT (21%)", "amount": "€756.00"},
+                                 {"label": "Total", "amount": "€4,356.00", "emphasis": true}]}}
 }
 ```
 
@@ -473,8 +479,11 @@ call fails with `conflict`:
   "expected_revision": 1,
   "metadata": {"title": "Website maintenance", "date": "2026-10-18", "language": "en", "client": "Globex"},
   "markdown": "# Summary\n\nMonthly maintenance of the Globex website, including security updates.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
-  "data": {"budget": {"currency": "EUR", "tax_rate": "21", "discount_pct": "10",
-                      "items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "300"}]}}
+  "data": {"budget": {"items": [{"description": "Maintenance", "quantity": "12", "unit": "month", "unit_price": "€300.00", "amount": "€3,600.00"}],
+                      "totals": [{"label": "Subtotal", "amount": "€3,600.00"},
+                                 {"label": "Discount (10%)", "amount": "−€360.00"},
+                                 {"label": "VAT (21%)", "amount": "€680.40"},
+                                 {"label": "Total", "amount": "€3,920.40", "emphasis": true}]}}
 }
 ```
 

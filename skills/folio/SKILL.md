@@ -58,7 +58,7 @@ Each reference is the same text the Folio server returns from
 - [references/workflow.md](references/workflow.md): Workflow. Which Folio tools to call, in which order, for every common task.
 - [references/recipes.md](references/recipes.md): Recipes. Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, and creating a brand and template.
 - [references/markdown.md](references/markdown.md): Markdown. The Markdown dialect Folio accepts, how images, links and sections work, and the input limits.
-- [references/components.md](references/components.md): Components. Structured blocks (budget, milestones, deliverables, signatures, info): their data, rules and computed values.
+- [references/components.md](references/components.md): Components. Structured blocks (budget, milestones, deliverables, signatures, info): their data, placement rules and how they render.
 - [references/templates.md](references/templates.md): Templates. Every field of a template spec, how schemas, sections, samples and labels work, and how versions behave.
 - [references/typst-layouts.md](references/typst-layouts.md): Typst layouts. The contract a custom `layout.typst` must follow: inputs, imports, fonts, checks and an example.
 - [references/brands.md](references/brands.md): Brands. Every field of a brand (colours, fonts, logo, header, footer, DOCX fallbacks) and how brand versions are used.

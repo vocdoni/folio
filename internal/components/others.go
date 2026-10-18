@@ -8,69 +8,67 @@ import (
 	"strings"
 
 	"github.com/vocdoni/folio/internal/model"
-	"github.com/vocdoni/folio/internal/money"
 	"github.com/vocdoni/folio/internal/pandocast"
 )
 
-// Payments is the computed payment schedule (index-aligned with
-// data.milestones; entries without payment_pct have an empty Amount).
-type Payments struct {
-	Currency string    `json:"currency"`
-	Items    []Payment `json:"items"`
-	cur      money.Currency
-}
-
-type Payment struct {
-	Pct    string `json:"pct,omitempty"`
-	Amount string `json:"amount,omitempty"`
-}
-
-func computePayments(raw any, b *BudgetComputed, path string) (*Payments, []model.Finding) {
-	list, _ := raw.([]any)
-	var fs []model.Finding
-	var pcts []*money.Decimal
-	var idx []int
-	for i, it := range list {
+// Check runs the cross-component checks the JSON schemas cannot express: when
+// the deliverables component is used, every id listed in
+// data.milestones[].deliverables must exist in data.deliverables[].id.
+// Findings carry JSON pointers; malformed data (already reported by the
+// schemas) is skipped.
+func Check(data map[string]any, uses []Use) []model.Finding {
+	usesDeliverables := false
+	for _, u := range uses {
+		usesDeliverables = usesDeliverables || u.Name == "deliverables"
+	}
+	if !usesDeliverables {
+		return nil
+	}
+	var ids []string
+	known := map[string]bool{}
+	dl, _ := data["deliverables"].([]any)
+	for _, it := range dl {
 		m, _ := it.(map[string]any)
-		if d := parseField(m, "payment_pct", path+"/"+strconv.Itoa(i), 2, true, &fs); d != nil {
-			pcts = append(pcts, d)
-			idx = append(idx, i)
+		if id, ok := m["id"].(string); ok {
+			ids = append(ids, id)
+			known[id] = true
 		}
 	}
-	if len(fs) > 0 {
-		return nil, fs
+	var fs []model.Finding
+	ms, _ := data["milestones"].([]any)
+	for i, it := range ms {
+		m, _ := it.(map[string]any)
+		refs, _ := m["deliverables"].([]any)
+		for j, r := range refs {
+			id, ok := r.(string)
+			if !ok || known[id] {
+				continue
+			}
+			hint := "add it to data.deliverables or remove it from the milestone"
+			if len(ids) > 0 {
+				hint = "use one of the ids in data.deliverables: " + strings.Join(ids, ", ")
+			}
+			fs = append(fs, model.Finding{Code: model.CodeUnknownDeliverable, Severity: model.SeverityError,
+				Path:    "/data/milestones/" + strconv.Itoa(i) + "/deliverables/" + strconv.Itoa(j),
+				Message: fmt.Sprintf("milestone %q refers to deliverable %q, which is not in data.deliverables", str(m, "name"), id),
+				Hint:    hint})
+		}
 	}
-	if len(pcts) == 0 {
-		return nil, []model.Finding{{Code: model.CodePaymentSum, Severity: model.SeverityError, Path: path,
-			Message: "show_payments=true but no milestone has payment_pct"}}
-	}
-	amounts, err := money.SplitPayments(b.totals.Total, pcts, b.in.Currency)
-	if err != nil {
-		return nil, []model.Finding{{Code: model.CodePaymentSum, Severity: model.SeverityError, Path: path,
-			Message: err.Error(), Hint: "payment_pct values must add up to exactly 100"}}
-	}
-	p := &Payments{Currency: b.Currency, Items: make([]Payment, len(list)), cur: b.in.Currency}
-	for k, i := range idx {
-		p.Items[i] = Payment{Pct: pcts[k].Text('f'), Amount: amounts[k].Text('f')}
-	}
-	return p, nil
+	return fs
 }
 
-// expandMilestones: Name | When | Description | Deliverables | [Payment].
-func expandMilestones(raw any, p *Payments, ctx Context) ([]pandocast.Block, error) {
+// expandMilestones: Name | When | Description | Deliverables | Payment; the
+// last three only when some milestone has them. Payment is shown verbatim.
+func expandMilestones(raw any, ctx Context) []pandocast.Block {
 	list, _ := raw.([]any)
-	aligns := []string{"AlignLeft", "AlignLeft", "AlignLeft", "AlignLeft"}
-	head := []string{ctx.label("milestones.name"), ctx.label("milestones.date"), ctx.label("milestones.description"), ctx.label("milestones.deliverables")}
-	if p != nil {
-		aligns, head = append(aligns, "AlignRight"), append(head, ctx.label("milestones.payment"))
-	}
+	aligns := []string{"AlignLeft", "AlignLeft", "AlignLeft", "AlignLeft", "AlignRight"}
+	head := []string{ctx.label("milestones.name"), ctx.label("milestones.date"), ctx.label("milestones.description"),
+		ctx.label("milestones.deliverables"), ctx.label("milestones.payment")}
 	var body []pandocast.Row
-	for i, it := range list {
+	for _, it := range list {
 		m, _ := it.(map[string]any)
 		when := str(m, "date")
-		if d := str(m, "duration"); d != "" {
-			when = strings.TrimSpace(when + " " + d)
-		}
+		when = joinNonEmpty(" ", when, str(m, "duration"))
 		var dels []string
 		if ds, ok := m["deliverables"].([]any); ok {
 			for _, d := range ds {
@@ -79,32 +77,18 @@ func expandMilestones(raw any, p *Payments, ctx Context) ([]pandocast.Block, err
 				}
 			}
 		}
-		cells := []pandocast.Cell{
+		body = append(body, row(
 			cell(plain(str(m, "name")), "AlignDefault"), cell(plain(when), "AlignDefault"),
 			cell(plain(str(m, "description")), "AlignDefault"), cell(plain(strings.Join(dels, ", ")), "AlignDefault"),
-		}
-		if p != nil {
-			text := ""
-			if pay := p.Items[i]; pay.Amount != "" {
-				pct, _ := money.Parse(pay.Pct, 2)
-				a, _ := money.Parse(pay.Amount, 4)
-				f, err := money.FormatAmount(a, p.cur, ctx.Lang)
-				if err != nil {
-					return nil, err
-				}
-				text = fmt.Sprintf("%s · %s", money.FormatPercent(pct, ctx.Lang), f)
-			}
-			cells = append(cells, cell(plain(text), "AlignDefault"))
-		}
-		body = append(body, row(cells...))
+			cell(plain(str(m, "payment")), "AlignDefault")))
 	}
 	// Name and When always stay; empty Description/Deliverables/Payment go.
 	aligns, head, body = dropEmptyColumns(aligns, head, body, 0, 1)
-	return []pandocast.Block{table("milestones", aligns, head, body, nil)}, nil
+	return []pandocast.Block{table("milestones", aligns, head, body, nil)}
 }
 
 // expandDeliverables: ID | Name | Description | Due | Acceptance.
-func expandDeliverables(raw any, ctx Context) ([]pandocast.Block, error) {
+func expandDeliverables(raw any, ctx Context) []pandocast.Block {
 	list, _ := raw.([]any)
 	keys := []string{"id", "name", "description", "due", "acceptance"}
 	head := make([]string, len(keys))
@@ -123,12 +107,12 @@ func expandDeliverables(raw any, ctx Context) ([]pandocast.Block, error) {
 	}
 	// ID and Name always stay.
 	aligns, head, body = dropEmptyColumns(aligns, head, body, 0, 1)
-	return []pandocast.Block{table("deliverables", aligns, head, body, nil)}, nil
+	return []pandocast.Block{table("deliverables", aligns, head, body, nil)}
 }
 
 // expandSignatures renders one column per signer (up to 3 per table):
 // a signature line, the name (strong), role, organization and a date line.
-func expandSignatures(raw any, ctx Context) ([]pandocast.Block, error) {
+func expandSignatures(raw any, ctx Context) []pandocast.Block {
 	list, _ := raw.([]any)
 	var blocks []pandocast.Block
 	for start := 0; start < len(list); start += 3 {
@@ -152,7 +136,7 @@ func expandSignatures(raw any, ctx Context) ([]pandocast.Block, error) {
 		}
 		blocks = append(blocks, table("signatures", aligns, nil, body, nil))
 	}
-	return blocks, nil
+	return blocks
 }
 
 // expandInfo renders a two-column key/value table of the metadata fields

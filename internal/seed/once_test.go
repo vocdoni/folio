@@ -5,7 +5,6 @@ package seed
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"image"
 	"image/png"
 	"path/filepath"
@@ -23,7 +22,7 @@ type okRenderer struct{}
 
 func (okRenderer) Render(_ context.Context, req render.Request) (*render.Result, error) {
 	canon, sum, err := render.CanonicalInput(model.Ref{ID: req.Template.ID, Version: req.TemplateVersion}, model.Ref{ID: req.Brand.ID, Version: req.BrandVersion}, req.Input)
-	return &render.Result{Canonical: canon, InputSHA256: sum, Computed: json.RawMessage(`{}`), PDF: []byte("%PDF"), DOCX: []byte("PK")}, err
+	return &render.Result{Canonical: canon, InputSHA256: sum, PDF: []byte("%PDF"), DOCX: []byte("PK")}, err
 }
 
 type pngRaster struct{}

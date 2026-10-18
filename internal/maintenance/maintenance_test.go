@@ -35,7 +35,7 @@ func (fakeRenderer) Render(_ context.Context, req render.Request) (*render.Resul
 	if err != nil {
 		return nil, err
 	}
-	return &render.Result{Canonical: canon, InputSHA256: sum, Computed: json.RawMessage(`{}`),
+	return &render.Result{Canonical: canon, InputSHA256: sum,
 		PDF: []byte("%PDF-" + sum), DOCX: []byte("PK-" + sum), Pages: [][]byte{[]byte("png-" + sum)}}, nil
 }
 

@@ -265,8 +265,9 @@ func memoInput(title, price string) map[string]any {
 	return map[string]any{
 		"markdown": "# Summary\n\nWe will deliver the work described below.\n\n::: folio-info\n:::\n\n# Budget\n\n::: folio-budget\n:::\n",
 		"metadata": map[string]any{"title": title, "date": "2026-10-18", "language": "en", "client": "ACME"},
-		"data": map[string]any{"budget": map[string]any{"currency": "EUR", "tax_rate": "21",
-			"items": []any{map[string]any{"description": "Design", "quantity": "2", "unit_price": price}}}},
+		"data": map[string]any{"budget": map[string]any{
+			"items":  []any{map[string]any{"description": "Design", "quantity": "2 days", "amount": price}},
+			"totals": []any{map[string]any{"label": "Total", "amount": price, "emphasis": true}}}},
 	}
 }
 

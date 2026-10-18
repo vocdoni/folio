@@ -1,11 +1,11 @@
 # Components
 
-Structured blocks (budget, milestones, deliverables, signatures, info): their data, rules and computed values.
+Structured blocks (budget, milestones, deliverables, signatures, info): their data, placement rules and how they render.
 
 A component is an empty fenced div with a `folio-` class. Folio replaces it
-with generated content built from `data.<component>` (or from metadata, for
-`info`). Data values are always inserted as plain text, so they can never
-inject formatting.
+with a table built from `data.<component>` (or from metadata, for `info`).
+Data values are always inserted as plain text, so they can never inject
+formatting.
 
 ```markdown
 # Budget
@@ -18,6 +18,9 @@ inject formatting.
 
 - The div must be empty: write the opening and closing `:::` on consecutive
   lines (`component_not_empty` otherwise).
+- It takes no attributes: `::: {.folio-milestones key=value}` fails with
+  `component_attribute`. Write `::: folio-milestones`; everything a component
+  shows comes from `data`.
 - It must be a top-level block, not inside a list or quote
   (`misplaced_component`).
 - The template must list it in `components` (`component_not_allowed`);
@@ -29,77 +32,62 @@ inject formatting.
   (`schema_violation` at `/data/<name>`), and must match the component schema
   (published by `get_capabilities.components`).
 
-## Money rules
+## Figures are yours
 
-Folio does all arithmetic with exact decimals; never compute amounts yourself.
+Folio never changes your content or figures:
+send every value exactly as it should appear.
+Folio does not calculate, round, check or reformat amounts, quantities,
+percentages, totals or payments; it lays them out.
 
-- Amounts, quantities and percentages may be JSON strings or numbers; strings
-  (`"1500.50"`) are recommended. They are read from their decimal text, never
-  as floating point.
-- `quantity` and `unit_price`: at most 4 decimals and 12 integer digits;
-  `tax_rate`, `discount_pct` and `payment_pct`: at most 2 decimals. All must
-  be ≥ 0 and percentages ≤ 100.
-- `currency` is an ISO 4217 code (`EUR`, `USD`, `GBP`, `CHF`, …); amounts are
-  rounded half-up to its minor unit (2 decimals for most, 0 for `JPY`).
-- Violations are `money_invalid` errors pointing at the field
-  (`/data/budget/items/2/unit_price`).
-
-Formatting follows `metadata.language`:
-
-| language | amount | percent |
-|---|---|---|
-| `en` and languages without built-in formatting | `€1,234.56`, `CHF 1,234.56` | `21%` |
-| `es`, `ca` | `1.234,56 €`, `1.234,56 CHF` | `21 %` |
-
-Symbols are used for EUR (€), USD ($), GBP (£) and JPY (¥); other currencies
-print their code.
+- Every displayed value is a JSON string: `"€1,234.50"`, `"1.234,50 €"`,
+  `"12 days"`, `"TBD"`. A JSON number fails with `schema_violation` at its
+  path and the hint `send figures as strings exactly as they should appear`.
+- Write figures in the document's language and currency style; Folio prints
+  them character for character, including no-break spaces.
+- You add the total rows (subtotal, discount, tax, total, …) yourself in
+  `data.budget.totals`, with your own labels and amounts. Do the arithmetic
+  before you call Folio and check it: Folio will not notice a wrong sum.
 
 ## budget
 
-Data:
+Data: `data.budget`:
 
 | field | required | meaning |
 |---|---|---|
-| `currency` | yes | ISO 4217 code |
-| `items` | yes | 1–500 lines: `description` (required), `quantity` (required), `unit`, `unit_price` (required), `tax_rate`, `discount_pct` |
-| `tax_rate` | no | default tax rate (%) for lines without their own |
-| `discount_pct` | no | document discount (%) applied to every line |
+| `items` | yes | 1–500 lines, see below |
+| `totals` | no | up to 20 rows printed under the lines, in order: `label` (required), `amount` (required), `emphasis` (bool: bold row) |
 | `notes` | no | paragraph printed under the table (≤ 2000 characters) |
-| `expected_total` | no | the total you expect; validation fails with `expected_total_mismatch` if Folio computes a different one |
 
-Algorithm (each step rounded half-up to the currency's minor unit):
+Each line of `items`:
 
-1. line `net = quantity × unit_price × (1 − discount_pct/100)`;
-   `subtotal` = sum of line nets;
-2. with a document `discount_pct`, each line becomes
-   `discounted = net × (1 − discount_pct/100)`; `discounted_subtotal` = sum
-   of discounted lines;
-3. lines are grouped by tax rate (the line's `tax_rate`, else the budget's,
-   else 0); each group's tax = `sum(discounted lines) × rate / 100`;
-4. `total = discounted_subtotal + sum of group taxes`.
+| field | required | column |
+|---|---|---|
+| `description` | yes | Description |
+| `quantity` | no | Qty |
+| `unit` | no | Unit (≤ 32 characters) |
+| `unit_price` | no | Unit price |
+| `discount` | no | Discount |
+| `amount` | yes | Amount |
 
-Rendered as a table (Description, Qty, Unit when any line has one, Unit
-price, Discount when any line has one, Amount) followed by Subtotal, the
-document discount, one tax row per rate and the Total.
+Description and Amount are always shown; Qty, Unit, Unit price and Discount
+only when at least one line has a value for them. Column headers come from
+the label tables (see Labels); total-row labels come from your data.
 
 ```json
 {"budget": {
-  "currency": "EUR", "tax_rate": "21",
   "items": [
-    {"description": "Discovery workshop", "quantity": "1", "unit": "day", "unit_price": "1200"},
-    {"description": "Design system", "quantity": "12", "unit": "day", "unit_price": "650", "discount_pct": "10"},
-    {"description": "Hosting (exempt)", "quantity": "12", "unit": "month", "unit_price": "40", "tax_rate": "0"}
+    {"description": "Discovery workshop", "quantity": "1", "unit": "day", "unit_price": "€1,200.00", "amount": "€1,200.00"},
+    {"description": "Design system", "quantity": "12", "unit": "day", "unit_price": "€650.00", "discount": "10%", "amount": "€7,020.00"},
+    {"description": "Hosting (VAT exempt)", "quantity": "12", "unit": "month", "unit_price": "€40.00", "amount": "€480.00"}
+  ],
+  "totals": [
+    {"label": "Subtotal", "amount": "€8,700.00"},
+    {"label": "VAT (21% on €8,220.00)", "amount": "€1,726.20"},
+    {"label": "Total", "amount": "€10,426.20", "emphasis": true}
   ],
   "notes": "Valid for 60 days."
 }}
 ```
-
-`computed.budget` (returned by `validate_document` and `render_document`):
-`currency`, `lines[]` (`description`, `quantity`, `unit`, `unit_price`,
-`discount_pct`, `tax_rate`, `net`, `discounted`), `subtotal`,
-`discount_pct`, `discount_amount`, `discounted_subtotal`, `tax_groups[]`
-(`rate`, `base`, `tax`), `tax_total`, `total`, `notes`. Quote these values;
-do not recompute them.
 
 ## milestones
 
@@ -112,23 +100,15 @@ Data: `data.milestones`, 1–200 entries:
 | `duration` | no | free text, e.g. `2 weeks` (shown after the date) |
 | `description` | no | |
 | `deliverables` | no | list of deliverable ids, e.g. `["D1", "D2"]` |
-| `payment_pct` | no | share of the budget total paid at this milestone |
+| `payment` | no | text shown in the Payment column, e.g. `30% · €4,500.00` or `On signature` |
 
-Rendered as a table: Milestone and When, then Description and Deliverables
-when any milestone has them.
+Rendered as a table: Milestone and When, then Description, Deliverables and
+Payment when any milestone has them. `payment` is printed exactly as sent;
+make the payments add up yourself.
 
-With `::: {.folio-milestones show_payments=true}` a Payment column shows
-`30% · €4,500.00` for each milestone with `payment_pct`. Then:
-
-- the document must also use the `budget` component (`money_invalid`
-  otherwise);
-- the `payment_pct` values present must add up to exactly 100
-  (`payment_pct_sum`); milestones without one get no payment;
-- each amount is the budget total × pct, rounded; the last payment absorbs
-  the rounding remainder so payments always add up to the total.
-
-`computed.milestones`: `currency` and `items[]` (`pct`, `amount`), aligned
-with `data.milestones`.
+When the document also uses `::: folio-deliverables`, every id listed in a
+milestone's `deliverables` must exist in `data.deliverables`
+(`unknown_deliverable` at `/data/milestones/<i>/deliverables/<j>`).
 
 ## deliverables
 
@@ -152,7 +132,8 @@ present, with labels in the document language.
 
 ## Labels
 
-Table headers and totals use the built-in label tables for `en`, `es` and
-`ca` (for example `budget.total`, `milestones.payment`). Templates can
-override any label per language in `labels`; `get_capabilities.label_keys`
-lists the keys.
+Table headers use the built-in label tables for `en`, `es` and `ca` (for
+example `budget.amount`, `milestones.payment`). Templates can override any
+label per language in `labels`; `get_capabilities.label_keys` lists the keys.
+Total-row labels are not label keys: they are the `label` of each
+`data.budget.totals` row.

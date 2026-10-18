@@ -23,7 +23,7 @@ type ValidateIn struct {
 	TemplateVersion int             `json:"template_version,omitempty" jsonschema:"omit for the latest version"`
 	Markdown        string          `json:"markdown" jsonschema:"document body in Folio Markdown (get_guide markdown); start from the template's body_skeleton"`
 	Metadata        json.RawMessage `json:"metadata" jsonschema:"title, date (YYYY-MM-DD), language plus the template's metadata_schema fields"`
-	Data            json.RawMessage `json:"data,omitempty" jsonschema:"component data, e.g. {\"budget\": {...}}; numbers may be strings for exact decimals"`
+	Data            json.RawMessage `json:"data,omitempty" jsonschema:"component data, e.g. {\"budget\": {\"items\": [...], \"totals\": [...]}}; every displayed value is a string, printed exactly as sent"`
 }
 
 type ValidateOut struct {
@@ -159,7 +159,7 @@ type DeleteDocumentOut struct {
 }
 
 const (
-	descValidate = `Dry-run a document against a template without rendering files: checks metadata and data against the template schemas, the Markdown dialect, required sections, components, images and placeholders. Returns valid and findings (errors and warnings with JSON pointer path and hint). Call it before render_document and fix every error; warnings (e.g. placeholders) do not block rendering unless the template is strict.`
+	descValidate = `Dry-run a document against a template without rendering files: checks metadata and data against the template schemas, the Markdown dialect, required sections, components, images and placeholders. Folio never changes content or figures: every value in data is printed exactly as sent. Returns valid and findings (errors and warnings with JSON pointer path and hint). Call it before render_document and fix every error; warnings (e.g. placeholders) do not block rendering unless the template is strict.`
 
 	descRender = `Render a document to PDF and DOCX (formats) and store it as a revision. New document: template_id, markdown, metadata, data; pass an idempotency_key whenever you might retry, so a retry returns the first document (unchanged=true) instead of a duplicate. New revision of an existing document: document_id plus expected_revision = its latest revision (get_document); a stale value fails with conflict. Identical input returns the existing revision with unchanged=true. Returns download links (public capabilities; share only with intended readers), preview images (include_previews) and warnings. Errors: validation_failed (fix details and retry), archived, busy (retry in a few seconds), timeout (simplify the document). Long renders send progress notifications.`
 

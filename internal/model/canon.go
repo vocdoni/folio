@@ -39,7 +39,8 @@ func CanonicalBytes(raw []byte) ([]byte, error) {
 }
 
 // DecodeJSON decodes raw into an untyped value with json.Number for numbers
-// (never float64), as required by the money path and the schema validator.
+// (never float64), so numbers keep their original text through the schema
+// validator and the canonical input.
 func DecodeJSON(raw []byte) (any, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return map[string]any{}, nil

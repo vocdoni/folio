@@ -1,29 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Line items and total rows, rendered verbatim: every value is a string exactly as it should appear.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["currency", "items"],
+  "required": ["items"],
   "properties": {
-    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
-    "tax_rate": {"type": ["string", "number"]},
-    "discount_pct": {"type": ["string", "number"]},
-    "notes": {"type": "string", "maxLength": 2000},
-    "expected_total": {"type": ["string", "number"]},
     "items": {
       "type": "array", "minItems": 1, "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["description", "quantity", "unit_price"],
+        "required": ["description", "amount"],
         "properties": {
           "description": {"type": "string", "minLength": 1, "maxLength": 500},
-          "quantity": {"type": ["string", "number"]},
+          "quantity": {"type": "string", "maxLength": 64},
           "unit": {"type": "string", "maxLength": 32},
-          "unit_price": {"type": ["string", "number"]},
-          "tax_rate": {"type": ["string", "number"]},
-          "discount_pct": {"type": ["string", "number"]}
+          "unit_price": {"type": "string", "maxLength": 64},
+          "discount": {"type": "string", "maxLength": 64},
+          "amount": {"type": "string", "minLength": 1, "maxLength": 64}
         }
       }
-    }
+    },
+    "totals": {
+      "type": "array", "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "amount"],
+        "properties": {
+          "label": {"type": "string", "minLength": 1, "maxLength": 200},
+          "amount": {"type": "string", "minLength": 1, "maxLength": 64},
+          "emphasis": {"type": "boolean"}
+        }
+      }
+    },
+    "notes": {"type": "string", "maxLength": 2000}
   }
 }

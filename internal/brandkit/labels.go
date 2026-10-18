@@ -10,7 +10,7 @@ import (
 	"github.com/vocdoni/folio/internal/model"
 )
 
-// BuiltinLanguages have built-in label tables and number formatting.
+// BuiltinLanguages have built-in label tables.
 var BuiltinLanguages = []string{"en", "es", "ca"}
 
 // LabelKeys is the complete label key set; a template language outside the
@@ -24,11 +24,15 @@ var LabelKeys = func() []string {
 	return ks
 }()
 
+// RetiredLabelKeys labelled the budget total rows that Folio used to compute.
+// Templates may still carry them: they are accepted and ignored (total-row
+// labels now come from data.budget.totals).
+var RetiredLabelKeys = []string{"budget.subtotal", "budget.tax", "budget.total"}
+
 var builtin = map[string]map[string]string{
 	"en": {
 		"budget.description": "Description", "budget.quantity": "Qty", "budget.unit": "Unit",
 		"budget.unit_price": "Unit price", "budget.discount": "Discount", "budget.amount": "Amount",
-		"budget.subtotal": "Subtotal", "budget.tax": "Tax", "budget.total": "Total",
 		"milestones.name": "Milestone", "milestones.date": "When", "milestones.description": "Description",
 		"milestones.deliverables": "Deliverables", "milestones.payment": "Payment",
 		"deliverables.id": "ID", "deliverables.name": "Deliverable", "deliverables.description": "Description",
@@ -41,7 +45,6 @@ var builtin = map[string]map[string]string{
 	"es": {
 		"budget.description": "Descripción", "budget.quantity": "Cant.", "budget.unit": "Unidad",
 		"budget.unit_price": "Precio unitario", "budget.discount": "Descuento", "budget.amount": "Importe",
-		"budget.subtotal": "Subtotal", "budget.tax": "IVA", "budget.total": "Total",
 		"milestones.name": "Hito", "milestones.date": "Cuándo", "milestones.description": "Descripción",
 		"milestones.deliverables": "Entregables", "milestones.payment": "Pago",
 		"deliverables.id": "ID", "deliverables.name": "Entregable", "deliverables.description": "Descripción",
@@ -54,7 +57,6 @@ var builtin = map[string]map[string]string{
 	"ca": {
 		"budget.description": "Descripció", "budget.quantity": "Quant.", "budget.unit": "Unitat",
 		"budget.unit_price": "Preu unitari", "budget.discount": "Descompte", "budget.amount": "Import",
-		"budget.subtotal": "Subtotal", "budget.tax": "IVA", "budget.total": "Total",
 		"milestones.name": "Fita", "milestones.date": "Quan", "milestones.description": "Descripció",
 		"milestones.deliverables": "Lliurables", "milestones.payment": "Pagament",
 		"deliverables.id": "ID", "deliverables.name": "Lliurable", "deliverables.description": "Descripció",
@@ -66,31 +68,29 @@ var builtin = map[string]map[string]string{
 	},
 }
 
-// ResolveLabels returns the label table for lang and the language whose
-// number formatting applies. Built-in languages start from their table and
-// apply template overrides; other languages use their template table only if
-// it defines every key (numbers then still format as en), else fall back to en.
-func ResolveLabels(lang string, overrides map[string]map[string]string) (map[string]string, string) {
+// ResolveLabels returns the label table for lang. Built-in languages start
+// from their table and apply template overrides; other languages use their
+// template table only if it defines every key, else fall back to en. Keys
+// outside LabelKeys (including RetiredLabelKeys) are ignored.
+func ResolveLabels(lang string, overrides map[string]map[string]string) map[string]string {
 	base, ok := builtin[lang]
-	numberLang := lang
 	if !ok {
-		numberLang = "en"
 		if t := overrides[lang]; complete(t) {
 			base = t
 		} else {
 			base, lang = builtin["en"], "en"
 		}
 	}
-	out := make(map[string]string, len(base))
-	for k, v := range base {
-		out[k] = v
+	out := make(map[string]string, len(builtin["en"]))
+	for k := range builtin["en"] {
+		out[k] = base[k]
 	}
 	for k, v := range overrides[lang] {
 		if _, known := builtin["en"][k]; known {
 			out[k] = v
 		}
 	}
-	return out, numberLang
+	return out
 }
 
 func complete(t map[string]string) bool {

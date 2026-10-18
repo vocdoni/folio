@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package components validates component data, computes derived values
-// (money via internal/money) and expands component divs into pandoc AST
-// blocks. Data values only ever become Str nodes, so they cannot inject markup.
+// Package components checks component data and expands component divs into
+// pandoc AST blocks. Values are rendered verbatim: Folio never parses,
+// computes, rounds or reformats them. Data values only ever become Str and
+// Space nodes, so they cannot inject markup.
 package components
 
 import (
@@ -10,7 +11,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vocdoni/folio/internal/model"
 	"github.com/vocdoni/folio/internal/pandocast"
 )
 
@@ -43,13 +43,11 @@ func Schema(name string) ([]byte, bool) {
 // Use is one component div found in the document.
 type Use struct {
 	Name  string
-	Attrs map[string]string // div key-value attributes, e.g. show_payments=true
-	Index int               // index of the div among top-level blocks
+	Index int // index of the div among top-level blocks
 }
 
 // Context carries what expansion needs besides data.
 type Context struct {
-	Lang     string
 	Labels   map[string]string // resolved label table (brandkit.ResolveLabels)
 	Metadata map[string]any    // effective metadata (decoded with json.Number)
 }
@@ -61,70 +59,53 @@ func (c Context) label(key string) string {
 	return key
 }
 
-// Computed is recorded on the revision as `computed`.
-type Computed struct {
-	Budget     *BudgetComputed `json:"budget,omitempty"`
-	Milestones *Payments       `json:"milestones,omitempty"`
-}
-
-// Compute validates and computes every used component. data is the decoded
-// `data` object (numbers as json.Number). Findings carry JSON pointers.
-func Compute(data map[string]any, uses []Use, ctx Context) (Computed, []model.Finding) {
-	var out Computed
-	var fs []model.Finding
-	used := map[string]Use{}
-	for _, u := range uses {
-		used[u.Name] = u
-	}
-	if _, ok := used["budget"]; ok {
-		b, f := computeBudget(data["budget"], "/data/budget")
-		fs = append(fs, f...)
-		out.Budget = b
-	}
-	if u, ok := used["milestones"]; ok && u.Attrs["show_payments"] == "true" {
-		if out.Budget == nil {
-			fs = append(fs, model.Finding{Code: model.CodeMoneyInvalid, Severity: model.SeverityError,
-				Path: "/data/milestones", Message: "show_payments=true needs a budget component in the same document"})
-		} else {
-			p, f := computePayments(data["milestones"], out.Budget, "/data/milestones")
-			fs = append(fs, f...)
-			out.Milestones = p
-		}
-	}
-	return out, fs
-}
-
-// Expand returns the blocks replacing one component div.
-func Expand(u Use, data map[string]any, c Computed, ctx Context) ([]pandocast.Block, error) {
+// Expand returns the blocks replacing one component div. data is the
+// validated `data` object.
+func Expand(u Use, data map[string]any, ctx Context) ([]pandocast.Block, error) {
 	switch u.Name {
 	case "budget":
-		if c.Budget == nil {
-			return nil, fmt.Errorf("components: budget not computed")
-		}
-		return expandBudget(c.Budget, ctx)
+		return expandBudget(data["budget"], ctx), nil
 	case "milestones":
-		return expandMilestones(data["milestones"], c.Milestones, ctx)
+		return expandMilestones(data["milestones"], ctx), nil
 	case "deliverables":
-		return expandDeliverables(data["deliverables"], ctx)
+		return expandDeliverables(data["deliverables"], ctx), nil
 	case "signatures":
-		return expandSignatures(data["signatures"], ctx)
+		return expandSignatures(data["signatures"], ctx), nil
 	case "info":
 		return expandInfo(ctx), nil
 	}
 	return nil, fmt.Errorf("components: unknown component %q", u.Name)
 }
 
-// ---- AST helpers (all text goes through pandocast.Text → Str/Space) ----
+// ---- AST helpers (all text goes through inlines → Str/Space) ----
+
+// isASCIISpace reports the separators that become Space nodes. Unicode
+// spaces (no-break, narrow no-break, thin) stay inside the text as sent.
+func isASCIISpace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'
+}
+
+// inlines splits s into Str and Space nodes on ASCII white space only.
+func inlines(s string) []pandocast.Inline {
+	out := []pandocast.Inline{}
+	for i, w := range strings.FieldsFunc(s, isASCIISpace) {
+		if i > 0 {
+			out = append(out, &pandocast.Space{})
+		}
+		out = append(out, &pandocast.Str{Text: w})
+	}
+	return out
+}
 
 func plain(s string) []pandocast.Block {
 	if s == "" {
 		return []pandocast.Block{}
 	}
-	return []pandocast.Block{&pandocast.Plain{Inlines: pandocast.Text(s)}}
+	return []pandocast.Block{&pandocast.Plain{Inlines: inlines(s)}}
 }
 
 func strongPlain(s string) []pandocast.Block {
-	return []pandocast.Block{&pandocast.Plain{Inlines: []pandocast.Inline{&pandocast.Strong{Inlines: pandocast.Text(s)}}}}
+	return []pandocast.Block{&pandocast.Plain{Inlines: []pandocast.Inline{&pandocast.Strong{Inlines: inlines(s)}}}}
 }
 
 func cell(blocks []pandocast.Block, align string) pandocast.Cell {
@@ -199,9 +180,11 @@ func dropEmptyColumns(aligns, head []string, body []pandocast.Row, keep ...int) 
 	return a, h, rows
 }
 
+// str returns m[k] when it is a string, without leading or trailing ASCII
+// white space (pandoc would drop it anyway); anything else is "".
 func str(m map[string]any, k string) string {
 	if s, ok := m[k].(string); ok {
-		return strings.TrimSpace(s)
+		return strings.TrimFunc(s, isASCIISpace)
 	}
 	return ""
 }

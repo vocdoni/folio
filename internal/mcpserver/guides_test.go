@@ -61,8 +61,9 @@ func TestTroubleshootingCoversEveryCode(t *testing.T) {
 		model.CodeSchemaViolation, model.CodeInvalidFormat, model.CodeMarkdownTooLarge, model.CodeNestingTooDeep,
 		model.CodeTableTooLarge, model.CodeMalformedTable, model.CodeMissingSection, model.CodeUnknownComponent,
 		model.CodeComponentNotAllowed, model.CodeComponentNotEmpty, model.CodeMisplacedComponent, model.CodeComponentMissing,
+		model.CodeComponentAttribute, model.CodeUnknownDeliverable,
 		model.CodeInvalidImage, model.CodeMissingAsset, model.CodeInvalidLink, model.CodeRawContent, model.CodePlaceholder,
-		model.CodeMoneyInvalid, model.CodeExpectedTotal, model.CodePaymentSum, model.CodePandocWarning, model.CodeTypstWarning,
+		model.CodePandocWarning, model.CodeTypstWarning,
 		model.CodePDFInvalid, model.CodeTooManyPages, model.CodeBlankPage, model.CodeEdgeInk, model.CodeDOCXInvalid,
 		model.CodeInvalidTypstImport,
 	}
@@ -78,7 +79,7 @@ func TestTroubleshootingCoversEveryCode(t *testing.T) {
 }
 
 func TestComponentsGuideCoversSchemas(t *testing.T) {
-	words := []string{"show_payments=true", "computed.budget", "computed.milestones"}
+	words := []string{"send every value exactly as it should appear", "`component_attribute`", "`unknown_deliverable`"}
 	for _, name := range components.Names {
 		words = append(words, "## "+name, "folio-"+name)
 		raw, _ := components.Schema(name)
@@ -99,8 +100,9 @@ func TestComponentsGuideCoversSchemas(t *testing.T) {
 		}
 	}
 	requireAll(t, "components", words)
-	// Budget item fields live one level deeper.
-	requireAll(t, "components", []string{"`description`", "`quantity`", "`unit_price`", "`unit`", "`tax_rate`", "`discount_pct`"})
+	// Budget item and total-row fields live one level deeper.
+	requireAll(t, "components", []string{"`description`", "`quantity`", "`unit`", "`unit_price`", "`discount`", "`amount`",
+		"`label`", "`emphasis`"})
 }
 
 func jsonFields(v any) []string {
