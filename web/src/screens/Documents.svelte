@@ -67,8 +67,8 @@
     <div class="field">
       <label for="doc-status">Status</label>
       <select id="doc-status" bind:value={status}>
-        <option value="">Drafts and published</option><option value="draft">Drafts</option>
-        <option value="published">Published</option><option value="trashed">In the trash</option>
+        <option value="">Not in trash</option><option value="draft">Drafts</option>
+        <option value="published">Published</option><option value="trashed">Trash</option>
       </select>
     </div>
     <div class="field">

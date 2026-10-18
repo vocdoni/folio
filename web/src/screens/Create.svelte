@@ -9,6 +9,7 @@
   import { work } from '../lib/work.svelte';
   import { toasts } from '../lib/toast.svelte';
   import { runJob } from '../lib/jobs';
+  import { bytes } from '../lib/format';
   import { metadataFields, objectFields, prune } from '../lib/schema';
   import type { Finding, Item, Plan, RenderResult, Source, TemplateSpec, TemplateSummary, DocumentDetail } from '../lib/types';
   import SchemaForm from '../components/SchemaForm.svelte';
@@ -147,7 +148,7 @@
       <label for="md" class="visually-hidden">Markdown</label>
       <textarea id="md" class="code md" bind:value={markdown} spellcheck="true" placeholder="# Executive summary&#10;&#10;Write or paste the document in Markdown…" aria-describedby="md-help"></textarea>
       <div class="foot">
-        <span id="md-help" class="small muted num" class:over={bytesUsed > maxBytes}>{bytesUsed.toLocaleString()} of {maxBytes.toLocaleString()} bytes</span>
+        <span id="md-help" class="small muted num" class:over={bytesUsed > maxBytes}>{bytes(bytesUsed)} of {bytes(maxBytes)}</span>
         {#if tpl && !markdown}
           <button type="button" class="btn small" onclick={() => (markdown = tpl!.spec.body_skeleton)}>Start from the template’s outline</button>
         {/if}

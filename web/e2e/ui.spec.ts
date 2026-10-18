@@ -123,6 +123,8 @@ test('create a document from Markdown with the assistant filling in the details'
   await page.goto('/ui/create');
   await page.locator('input[type=file]').first().setInputFiles(fixture('quote.md'));
   await expect(page.locator('#md')).toHaveValue(/Northwind Traders/);
+  // Byte counter is English-formatted as a size, never locale digits.
+  await expect(page.locator('#md-help')).toHaveText(/^\d+(\.\d)? (B|KB) of 1\.0 MB$/);
   await page.getByRole('button', { name: 'Fill in from my text' }).click();
   await expect(page.getByLabel('Template')).toHaveValue('quote', { timeout: 30_000 });
   await expect(page.getByLabel('Client')).toHaveValue('Northwind Traders');
@@ -145,6 +147,10 @@ test('edit a template in the studio with a live proof and save a version', async
   await axe(page, 'templates');
   await page.getByRole('link', { name: /Technical report/ }).click();
   await expect(page.getByText(/Proof updated at/)).toBeVisible({ timeout: 60_000 });
+  // No stray space before the comma: the whole sentence is one text run.
+  const line = page.locator('.status span:not(.dot)').filter({ hasText: /Proof updated at/ });
+  expect(await line.evaluate((el) => el.textContent)).toMatch(/^Proof updated at \d{1,2}:\d{2}, \d+ pages?$/);
+  expect(await line.evaluate((el) => (el as HTMLElement).innerText)).not.toMatch(/\d , /);
   await axe(page, 'studio');
   await page.getByRole('button', { name: 'Layout' }).click();
   const rerender = page.waitForResponse((r) => r.url().endsWith('/ui/api/templates/preview') && r.ok(), { timeout: 60_000 });
@@ -218,4 +224,22 @@ test('the main flows work from the keyboard', async ({ page }) => {
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeHidden();
+});
+
+test('the documents status filter shows its whole label on a phone @mobile', async ({ page }) => {
+  const w = await watch(page);
+  await signIn(page);
+  await page.goto('/ui/documents');
+  const select = page.locator('#doc-status');
+  await expect(select).toBeVisible();
+  const fits = await select.evaluate((el: HTMLSelectElement) => {
+    const cs = getComputedStyle(el);
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const widest = Math.max(...Array.from(el.options).map((o) => ctx.measureText(o.text).width));
+    const room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return { widest, room };
+  });
+  expect(fits.widest).toBeLessThanOrEqual(fits.room);
+  expect(w.problems).toEqual([]);
 });

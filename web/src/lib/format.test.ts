@@ -8,6 +8,7 @@ describe('format', () => {
     expect(bytes(512)).toBe('512 B');
     expect(bytes(1536)).toBe('1.5 KB');
     expect(bytes(48 * 1024 * 1024)).toBe('48 MB');
+    expect(`${bytes(0)} of ${bytes(1048576)}`).toBe('0 B of 1.0 MB');
     expect(percent(0)).toBe('0%');
     expect(percent(0.004)).toBe('0.4%');
     expect(percent(0.25)).toBe('25%');

@@ -429,7 +429,7 @@
           {#if proofBusy}<span class="dot busy"></span>Updating the proof…
           {:else if proofError}<span class="dot bad"></span>{proofError}
           {:else if proof && !proof.ok}<span class="dot bad"></span>The sample does not render yet
-          {:else if proofAt}<span class="dot ok"></span>Proof updated at <time class="num">{clock(proofAt)}</time>, {proof?.pages} {proof?.pages === 1 ? 'page' : 'pages'}
+          {:else if proofAt}<span class="dot ok"></span><span>Proof updated at <time class="num">{clock(proofAt)}</time>, {proof?.pages} {proof?.pages === 1 ? 'page' : 'pages'}</span>
           {:else}Preparing the proof…{/if}
         </p>
         {#if proof && !proof.ok}
