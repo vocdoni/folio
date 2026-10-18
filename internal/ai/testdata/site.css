@@ -1,0 +1,8 @@
+@layer theme{:root{--font-sans:"Example Sans Variable",ui-sans-serif,system-ui,sans-serif;--font-serif:Georgia,serif;--font-mono:"Fira Code",ui-monospace,monospace;--color-red-500:oklch(63.7% .237 25.331);--color-blue-600:oklch(54.6% .245 262.881);--tw-ring-color:#3b82f680;--tw-shadow-color:#0000001a}}
+@property --tw-gradient-from{syntax:"<color>";inherits:false;initial-value:#0000}
+:root{--background:oklch(.988 .011 97);--foreground:oklch(.24 .013 106);--primary:oklch(47% .085 158);--secondary:oklch(.962 .022 97);--muted:oklch(.936 .033 97);--accent:rgb(200 36 107);--surface-tint:#fff}
+.dark{--background:oklch(.2 .01 106);--primary:oklch(.62 .09 158)}
+body{background:var(--background);color:var(--foreground)}
+a{color:var(--primary)}.btn{background-color:oklch(47% .085 158);border:1px solid hsl(0 0% 90%)}
+pre,code{background:#1e1e2e;color:#cdd6f4}
+.hljs-string{color:#a6e3a1}.hljs-number{color:#fab387}.token.comment{color:#6c7086}

@@ -149,6 +149,15 @@
     }
   }
 
+  function openAssistant() {
+    if (aiMode) {
+      aiMode = '';
+      return;
+    }
+    aiMode = 'logo';
+    if (!aiAsset && b?.logo) aiAsset = b.logo.asset_id;
+  }
+
   async function suggest(e: SubmitEvent) {
     e.preventDefault();
     aiError = '';
@@ -221,7 +230,7 @@
       </div>
       <div class="actions">
         {#if session.ai.enabled}
-          <button class="btn" onclick={() => (aiMode = aiMode ? '' : 'logo')} aria-expanded={!!aiMode}><Icon name="assistant" />Suggest with the assistant</button>
+          <button class="btn" onclick={openAssistant} aria-expanded={!!aiMode}><Icon name="assistant" />Suggest with the assistant</button>
         {/if}
         {#if !isNew}<button class="btn" onclick={() => (confirmArchive = true)}>{archived ? 'Restore' : 'Archive'}</button>{/if}
         <button class="btn primary" onclick={save} disabled={saving || (!dirty && !isNew)}>{saving ? 'Saving…' : isNew ? 'Create brand' : 'Save as new version'}</button>
@@ -234,7 +243,7 @@
       <form class="sheet ai" onsubmit={suggest} aria-labelledby="ai-h">
         <h2 id="ai-h" class="sheet-title">Suggest a brand</h2>
         <div class="seg" role="radiogroup" aria-label="Start from">
-          <label class="choice"><input type="radio" bind:group={aiMode} value="logo" />From a logo</label>
+          <label class="choice"><input type="radio" bind:group={aiMode} value="logo" />From your logo (best result)</label>
           <label class="choice"><input type="radio" bind:group={aiMode} value="url" />From a website</label>
         </div>
         {#if aiMode === 'logo'}
@@ -244,6 +253,7 @@
               <option value="">Choose an uploaded image…</option>
               {#each assets as a (a.asset_id)}<option value={a.asset_id}>{a.name}</option>{/each}
             </select>
+            <label class="btn small upload"><Icon name="upload" />Upload your logo (PNG or SVG)<input type="file" accept=".png,.svg,image/png,image/svg+xml" class="visually-hidden" onchange={uploadLogo} /></label>
             <span class="help">Folio reads the logo’s main colours itself; the model maps them to roles and picks fonts{session.ai.vision ? ' and also sees the logo' : ''}.</span>
           </div>
         {:else}
@@ -267,12 +277,19 @@
             {#if suggestion.swatches?.length}
               <p class="small muted">Colours found in the logo: {#each suggestion.swatches as s, i (i)}<span class="mini"><i style:background={s.hex}></i>{s.hex}</span>{/each}</p>
             {/if}
-            {#if suggestion.evidence?.images.length}
-              <p class="small">Logo candidates found on the page:</p>
+            {#if suggestion.evidence && !suggestion.evidence.images.length}
+              <p class="note warn small" role="status">The website does not give a logo Folio can use. Upload your logo to use it in the brand.</p>
+              <label class="btn small upload"><Icon name="upload" />Upload your logo (PNG or SVG)<input type="file" accept=".png,.svg,image/png,image/svg+xml" class="visually-hidden" onchange={uploadLogo} /></label>
+            {:else if suggestion.evidence?.images.length}
+              <p class="small">Logo candidates found on the page, best first:</p>
               <ul class="cands">
                 {#each suggestion.evidence.images as url, i (url)}
                   <li class:best={i === suggestion.logo_index}>
-                    <span class="code small">{url}</span>
+                    {#if url.startsWith('data:image/svg+xml')}
+                      <img class="cand-img" src={url} alt="Logo found in the page header" /><span class="small">Logo from the page header</span>
+                    {:else}
+                      <span class="code small">{url}</span>
+                    {/if}
                     <button type="button" class="btn small" onclick={() => useLogo(i)}>{i === suggestion.logo_index ? 'Use the suggested logo' : 'Use this one'}</button>
                   </li>
                 {/each}
@@ -432,6 +449,12 @@
   }
   .mini {
     margin-left: var(--s-2);
+  }
+  .cand-img {
+    height: 28px;
+    width: auto;
+    max-width: 120px;
+    margin-right: var(--space-2, 8px);
   }
   .cands {
     list-style: none;
