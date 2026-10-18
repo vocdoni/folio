@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"runtime/debug"
+
+	"github.com/vocdoni/folio/internal/sandbox"
 )
 
 func version() string {
@@ -32,9 +34,11 @@ func main() {
 	args := os.Args[1:]
 	cmd := "serve"
 	if len(args) > 0 {
-		cmd = args[0]
+		cmd, args = args[0], args[1:]
 	}
 	switch cmd {
+	case "sandbox-exec":
+		os.Exit(sandbox.Main(args))
 	case "version":
 		fmt.Println("folio", version())
 	case "serve":
