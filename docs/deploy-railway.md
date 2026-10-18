@@ -49,6 +49,7 @@ snapshots; 1 GB is plenty to start.
 | `RAILWAY_RUN_UID` | `0` |
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | `90` |
 | `FOLIO_OPENROUTER_API_KEY` | optional: enables the AI reviewer and the web UI assistants |
+| `FOLIO_AI_MODEL` | optional: the assistants' OpenRouter model; the default `google/gemini-3.1-flash-lite` answers in seconds. If you set it on an older deployment to follow the reviewer's model, remove it or check that the model you name returns structured output quickly |
 | `FOLIO_UI_PASSWORD` | optional: enables the web UI at `/ui` (at least 12 characters); generate it with `openssl rand -base64 24` |
 | `FOLIO_RENDER_CONCURRENCY` | optional: about (service memory − 1 GiB) / 1 GiB; the default `2` suits 3 GB or more |
 

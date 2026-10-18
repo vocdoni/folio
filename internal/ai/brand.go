@@ -301,22 +301,20 @@ const brandSystem = `You propose a document brand for Folio (colours and fonts u
 Map colours to roles: primary (headings, table headers), secondary (dark accent), accent (highlights), text (body text, dark, high contrast on the background), muted (secondary text, readable), background (page, usually white or near-white). Use only #RRGGBB values; prefer colours from the evidence for primary, secondary and accent. Pick fonts only from the given families (heading, body, mono). Header and footer are short texts such as the organisation name; leave them empty when unknown. logo_index is the index of the best logo among the evidence images, or -1.
 ` + dataRules
 
-func brandSchema(fonts []string) map[string]any {
-	str := map[string]any{"type": "string"}
-	fontEnum := map[string]any{"type": "string", "enum": fonts}
-	obj := func(req []string, props map[string]any) map[string]any {
-		return map[string]any{"type": "object", "additionalProperties": false, "required": req, "properties": props}
+func brandSchema(fonts []string) *Schema {
+	font := Enum(fonts...)
+	var colors []Property
+	for _, r := range []string{"primary", "secondary", "accent", "text", "muted", "background"} {
+		colors = append(colors, Prop(r, Str()))
 	}
-	roles := []string{"primary", "secondary", "accent", "text", "muted", "background"}
-	cp := map[string]any{}
-	for _, r := range roles {
-		cp[r] = str
-	}
-	return obj([]string{"name", "colors", "fonts", "header", "footer", "logo_index"}, map[string]any{
-		"name": str, "colors": obj(roles, cp),
-		"fonts":  obj([]string{"heading", "body", "mono"}, map[string]any{"heading": fontEnum, "body": fontEnum, "mono": fontEnum}),
-		"header": str, "footer": str, "logo_index": map[string]any{"type": "integer"},
-	})
+	return Object(
+		Prop("name", Str()),
+		Prop("colors", Object(colors...)),
+		Prop("fonts", Object(Prop("heading", font), Prop("body", font), Prop("mono", font))),
+		Prop("header", Str()),
+		Prop("footer", Str()),
+		Prop("logo_index", Int()),
+	)
 }
 
 var colorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)

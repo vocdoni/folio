@@ -56,33 +56,35 @@ Rules:
 - Never use custom Typst.
 ` + dataRules
 
-func draftSchema(in DraftInput) map[string]any {
-	str := map[string]any{"type": "string"}
-	strs := map[string]any{"type": "array", "items": str}
-	enum := func(vs []string) map[string]any { return map[string]any{"type": "string", "enum": vs} }
-	obj := func(props map[string]any) map[string]any {
-		req := make([]string, 0, len(props))
-		for k := range props {
-			req = append(req, k)
-		}
-		return map[string]any{"type": "object", "additionalProperties": false, "required": req, "properties": props}
-	}
-	return obj(map[string]any{
-		"id": str, "name": str, "description": str, "category": str,
-		"brand_id":  enum(in.Brands),
-		"languages": map[string]any{"type": "array", "items": enum(in.Languages)},
-		"layout": obj(map[string]any{"base": enum(in.Layouts), "cover": map[string]any{"type": "boolean"}, "toc": map[string]any{"type": "boolean"},
-			"page_size": enum([]string{"a4", "letter"}), "heading_numbering": map[string]any{"type": "boolean"}}),
-		"metadata_schema_json": str,
-		"data_schema_json":     str,
-		"sections": map[string]any{"type": "array", "items": obj(map[string]any{
-			"title": str, "required": map[string]any{"type": "boolean"}, "aliases": strs, "hint": str,
-			"component": enum(append([]string{""}, in.Components...))})},
-		"components":    map[string]any{"type": "array", "items": enum(in.Components)},
-		"strict":        map[string]any{"type": "boolean"},
-		"body_skeleton": str,
-		"sample":        obj(map[string]any{"markdown": str, "metadata_json": str, "data_json": str}),
-	})
+func draftSchema(in DraftInput) *Schema {
+	return Object(
+		Prop("id", Str()),
+		Prop("name", Str()),
+		Prop("description", Str()),
+		Prop("category", Str()),
+		Prop("brand_id", Enum(in.Brands...)),
+		Prop("languages", Array(Enum(in.Languages...))),
+		Prop("layout", Object(
+			Prop("base", Enum(in.Layouts...)),
+			Prop("cover", Bool()),
+			Prop("toc", Bool()),
+			Prop("page_size", Enum("a4", "letter")),
+			Prop("heading_numbering", Bool()),
+		)),
+		Prop("metadata_schema_json", Str()),
+		Prop("data_schema_json", Str()),
+		Prop("sections", Array(Object(
+			Prop("title", Str()),
+			Prop("required", Bool()),
+			Prop("aliases", Array(Str())),
+			Prop("hint", Str()),
+			Prop("component", Enum(append([]string{""}, in.Components...)...)),
+		))),
+		Prop("components", Array(Enum(in.Components...))),
+		Prop("strict", Bool()),
+		Prop("body_skeleton", Str()),
+		Prop("sample", Object(Prop("markdown", Str()), Prop("metadata_json", Str()), Prop("data_json", Str()))),
+	)
 }
 
 type draftAnswer struct {

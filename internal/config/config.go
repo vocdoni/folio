@@ -66,6 +66,13 @@ var DefaultTrustedProxies = []netip.Prefix{
 // DefaultOpenRouterBaseURL is the OpenRouter API root.
 const DefaultOpenRouterBaseURL = "https://openrouter.ai/api/v1"
 
+// Default OpenRouter models: the reviewer needs vision; the assistants need
+// fast, reliable structured output.
+const (
+	DefaultReviewModel = "google/gemma-4-31b-it"
+	DefaultAIModel     = "google/gemini-3.1-flash-lite"
+)
+
 // Config is the validated configuration (documented defaults).
 type Config struct {
 	Addr               string
@@ -209,7 +216,7 @@ func Load(getenv func(string) (string, bool), mode Mode) (*Config, error) {
 		errs = append(errs, errors.New("FOLIO_LOG_LEVEL: must be debug, info, warn or error"))
 	}
 	c.OpenRouterAPIKey = str("FOLIO_OPENROUTER_API_KEY", "")
-	c.ReviewModel = str("FOLIO_REVIEW_MODEL", "google/gemma-4-31b-it")
+	c.ReviewModel = str("FOLIO_REVIEW_MODEL", DefaultReviewModel)
 	c.ReviewMaxPages = num("FOLIO_REVIEW_MAX_PAGES", 20, 1)
 	c.OpenRouterBaseURL = strings.TrimRight(str("FOLIO_OPENROUTER_BASE_URL", DefaultOpenRouterBaseURL), "/")
 	if u, err := url.Parse(c.OpenRouterBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
@@ -225,7 +232,7 @@ func Load(getenv func(string) (string, bool), mode Mode) (*Config, error) {
 	c.UISessionTTL = dur("FOLIO_UI_SESSION_TTL", 12*time.Hour, false)
 	c.UIPreviewConcurrency = num("FOLIO_UI_PREVIEW_CONCURRENCY", 1, 1)
 	c.ActivityRetention = dur("FOLIO_ACTIVITY_RETENTION", 720*time.Hour, false)
-	c.AIModel = str("FOLIO_AI_MODEL", c.ReviewModel)
+	c.AIModel = str("FOLIO_AI_MODEL", DefaultAIModel)
 	c.AIDailyCalls = num("FOLIO_AI_DAILY_CALLS", 200, 0)
 	c.AISessionCalls = num("FOLIO_AI_SESSION_CALLS", 30, 0)
 	c.TrustedProxies = DefaultTrustedProxies

@@ -86,12 +86,16 @@ func TestWebUIAndAIDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.UIEnabled() || c.UISessionTTL != 12*time.Hour || c.UIPreviewConcurrency != 1 || c.ActivityRetention != 720*time.Hour ||
-		c.AIModel != "vendor/model-a" || c.AIDailyCalls != 200 || c.AISessionCalls != 30 ||
+		c.AIModel != DefaultAIModel || c.ReviewModel != "vendor/model-a" || c.AIDailyCalls != 200 || c.AISessionCalls != 30 ||
 		c.OpenRouterBaseURL != "https://openrouter.ai/api/v1" || len(c.TrustedProxies) != len(DefaultTrustedProxies) {
 		t.Fatalf("defaults: %+v", c)
 	}
 	if !c.TrustedProxies[0].Contains(netip.MustParseAddr("10.1.2.3")) {
 		t.Fatal("private ranges must be trusted by default")
+	}
+	// The assistants no longer default to the reviewer's model.
+	if c, err := Load(env(nil), ModeRender); err != nil || c.AIModel != "google/gemini-3.1-flash-lite" || c.ReviewModel != "google/gemma-4-31b-it" {
+		t.Fatalf("model defaults: %v %+v", err, c)
 	}
 }
 

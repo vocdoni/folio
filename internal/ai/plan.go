@@ -63,17 +63,13 @@ const planSystem = `You prepare the metadata and component data for a document t
 Choose the best template for the Markdown from the TEMPLATES list (keep the template the user chose when one is given). Fill "metadata_json" with a JSON object for the template's metadata (title, date as YYYY-MM-DD, language as one of the template's languages, plus the fields of its metadata_schema) and "data_json" with a JSON object for its components (data_schema), using only values present in the Markdown. Figures are strings exactly as they appear in the Markdown. Put anything you were unsure about in "warnings" as short sentences.
 ` + dataRules
 
-func planSchema() map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false,
-		"required": []string{"template_id", "metadata_json", "data_json", "warnings"},
-		"properties": map[string]any{
-			"template_id":   map[string]any{"type": "string"},
-			"metadata_json": map[string]any{"type": "string", "description": "a JSON object, encoded as a string"},
-			"data_json":     map[string]any{"type": "string", "description": "a JSON object, encoded as a string"},
-			"warnings":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-		},
-	}
+func planSchema() *Schema {
+	return Object(
+		Prop("template_id", Str()),
+		Prop("metadata_json", Str().Describe("a JSON object, encoded as a string")),
+		Prop("data_json", Str().Describe("a JSON object, encoded as a string")),
+		Prop("warnings", Array(Str())),
+	)
 }
 
 type planAnswer struct {
