@@ -291,3 +291,44 @@ func TestServeDrainsInFlightRequests(t *testing.T) {
 		t.Fatalf("Serve: %v", err)
 	}
 }
+
+// TestServeRunsBeforeShutdownFirst: a stream that only ends when the
+// beforeShutdown hook runs does not hold up the drain.
+func TestServeRunsBeforeShutdownFirst(t *testing.T) {
+	started, streamEnd := make(chan struct{}), make(chan struct{})
+	stream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		close(started)
+		<-streamEnd
+	})
+	h, _ := newTestHandler(t, Options{Tokens: tokens, MCP: stream})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Serve(ctx, ln, h, 30*time.Second, slog.New(slog.DiscardHandler), func() { close(streamEnd) })
+	}()
+	go func() {
+		req, _ := http.NewRequest(http.MethodPost, "http://"+ln.Addr().String()+"/mcp", nil)
+		req.Header.Set("Authorization", "Bearer "+tokA)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+	}()
+	<-started
+	start := time.Now()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil || time.Since(start) > 5*time.Second {
+			t.Fatalf("Serve: %v after %s", err, time.Since(start))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the open stream held up the drain")
+	}
+}

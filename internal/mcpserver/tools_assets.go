@@ -8,6 +8,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/assets"
 )
 
@@ -73,6 +74,9 @@ func registerAssetTools(s *mcp.Server, d *Deps) {
 				n = n[:200]
 			}
 			return "asset", n
+		},
+		Record: func(_ UploadAssetIn, out *AssetOut) (string, activity.Detail) {
+			return out.AssetID, activity.Detail{Bytes: int64(out.Size)}
 		},
 		Handle: func(ctx context.Context, c *call, in UploadAssetIn) (*AssetOut, error) {
 			a, err := d.Assets.Upload(ctx, c.Actor, assets.UploadRequest{Name: in.Name, Description: in.Description, ContentBase64: in.ContentBase64, URL: in.URL})

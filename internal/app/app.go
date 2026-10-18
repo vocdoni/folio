@@ -22,6 +22,7 @@ import (
 	"time"
 
 	bundled "github.com/vocdoni/folio/assets"
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/assets"
 	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/checks"
@@ -62,6 +63,10 @@ type App struct {
 	Documents   *documents.Service
 	Assets      *assets.Service
 	Maintenance maintenance.Config
+	Activity    *activity.Recorder
+	Broadcaster *activity.Broadcaster
+	stopRec     context.CancelFunc
+	recDone     chan struct{}
 	Seeded      bool
 	log         *slog.Logger
 }
@@ -229,7 +234,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		PreviewPages: cfg.PreviewPagesStored, GCGrace: cfg.BlobGCGrace}
 	mc := maintenance.Config{Documents: docs, DB: db, BackupDir: filepath.Join(cfg.DataDir, "backups"), JobRoot: o.JobRoot,
 		JobMaxAge: 3 * cfg.RenderTimeout, TrashRetention: cfg.TrashRetention, BackupInterval: cfg.BackupInterval,
-		BackupKeep: cfg.BackupKeep, Now: o.Now, Logger: log}
+		BackupKeep: cfg.BackupKeep, ActivityRetention: cfg.ActivityRetention, Now: o.Now, Logger: log}
 	if err := maintenance.Startup(ctx, mc); err != nil {
 		return nil, err
 	}
@@ -247,8 +252,10 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	if err != nil {
 		return nil, err
 	}
+	bc := activity.NewBroadcaster()
+	rec := activity.NewRecorder(db, bc, log, o.Now)
 	srv := mcpserver.New(&mcpserver.Deps{Catalog: cat, Documents: docs, Assets: as, Validator: pipeline, Raster: engine, Queue: queue,
-		Blobs: blobs, DB: db, Reviewer: rv, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
+		Blobs: blobs, DB: db, Reviewer: rv, Activity: rec, Config: cfg, Version: o.Version, Sandbox: string(level), Packages: packages,
 		Logger: log, Now: o.Now, ProgressInterval: o.ProgressInterval})
 	h, err := httpserver.NewHandler(httpserver.Options{
 		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth,
@@ -258,7 +265,16 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	if err != nil {
 		return nil, err
 	}
-	return &App{Config: cfg, Handler: h, DB: db, Catalog: cat, Documents: docs, Assets: as, Maintenance: mc, Seeded: seeded, log: log}, nil
+	// The activity writer runs until Close, so it outlives the HTTP drain
+	// and records the last calls.
+	rctx, stopRec := context.WithCancel(context.WithoutCancel(ctx))
+	recDone := make(chan struct{})
+	go func() {
+		defer close(recDone)
+		rec.Run(rctx)
+	}()
+	return &App{Config: cfg, Handler: h, DB: db, Catalog: cat, Documents: docs, Assets: as, Maintenance: mc,
+		Activity: rec, Broadcaster: bc, stopRec: stopRec, recDone: recDone, Seeded: seeded, log: log}, nil
 }
 
 // Run serves on ln until ctx is cancelled, with the periodic maintenance and,
@@ -287,11 +303,18 @@ func (a *App) Run(ctx context.Context, ln net.Listener) error {
 		}()
 	}
 	a.log.Info("listening", "addr", ln.Addr().String(), "public_url", a.Config.PublicURL)
-	err := httpserver.Serve(ctx, ln, a.Handler, a.Config.RenderTimeout+20*time.Second, a.log)
+	// Live activity streams are closed before the drain starts.
+	err := httpserver.Serve(ctx, ln, a.Handler, a.Config.RenderTimeout+20*time.Second, a.log, a.Broadcaster.Close)
 	stop()
 	<-maintDone // the caller closes the database next
 	return err
 }
 
-// Close closes the database.
-func (a *App) Close() error { return a.DB.Close() }
+// Close flushes and stops the activity writer, then closes the database.
+// Call it after Run returns (the HTTP drain is over), so the rows of the
+// last calls are written.
+func (a *App) Close() error {
+	a.stopRec()
+	<-a.recDone
+	return a.DB.Close()
+}

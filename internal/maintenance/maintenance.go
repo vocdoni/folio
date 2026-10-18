@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/documents"
 	"github.com/vocdoni/folio/internal/render"
 	"github.com/vocdoni/folio/internal/store"
@@ -32,8 +33,10 @@ type Config struct {
 	BackupInterval time.Duration // FOLIO_BACKUP_INTERVAL; 0 disables backups
 	BackupKeep     int           // FOLIO_BACKUP_KEEP
 	Interval       time.Duration // period of the retention pass; 0 means 10 minutes
-	Now            func() time.Time
-	Logger         *slog.Logger
+	// ActivityRetention is FOLIO_ACTIVITY_RETENTION; 0 keeps activity rows forever.
+	ActivityRetention time.Duration
+	Now               func() time.Time
+	Logger            *slog.Logger
 }
 
 // Startup runs before the server accepts requests: it removes job dirs left
@@ -57,7 +60,17 @@ func Startup(ctx context.Context, c Config) error {
 
 // RetentionPass purges documents trashed longer than TrashRetention and
 // deletes expired files (template previews); both run blob GC afterwards.
+// It also deletes activity rows older than ActivityRetention.
 func RetentionPass(ctx context.Context, c Config) (purged int, expired int64, err error) {
+	if c.ActivityRetention > 0 {
+		n, err := activity.Prune(ctx, c.DB, c.Now().Add(-c.ActivityRetention))
+		if err != nil {
+			return 0, 0, fmt.Errorf("maintenance: prune activity: %w", err)
+		}
+		if n > 0 {
+			c.Logger.Info("activity retention", "rows_deleted", n)
+		}
+	}
 	if purged, err = c.Documents.PurgeExpiredTrash(ctx, c.TrashRetention); err != nil {
 		return 0, 0, fmt.Errorf("maintenance: purge trash: %w", err)
 	}

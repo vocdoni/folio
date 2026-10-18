@@ -14,6 +14,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/vocdoni/folio/internal/activity"
 	"github.com/vocdoni/folio/internal/model"
 )
 
@@ -32,8 +33,13 @@ type tool[In, Out any] struct {
 	Access                   access
 	Idempotent               bool
 	OpenWorld                bool // talks to systems outside Folio (URL fetch, AI reviewer)
-	// Target names the audit target of a failed mutating call.
+	// Target names the target of a call: the audit target of a failed
+	// mutating call and the activity target of every call.
 	Target func(In) (kind, id string)
+	// Record (optional) returns the activity target id when only the output
+	// knows it (new documents, uploaded assets; "" keeps Target's) and the
+	// allowlisted activity detail of a successful call.
+	Record func(in In, out *Out) (targetID string, d activity.Detail)
 	Handle func(ctx context.Context, c *call, in In) (*Out, error)
 }
 
@@ -185,11 +191,24 @@ func register[In, Out any](s *mcp.Server, d *Deps, t tool[In, Out]) {
 			if err == nil {
 				out, err = t.Handle(ctx, c, in)
 			}
+			kind, id := "", ""
+			if t.Target != nil {
+				kind, id = t.Target(in)
+			}
 			if err == nil {
 				var res *mcp.CallToolResult
 				if res, err = c.success(out, outR); err == nil {
+					dur := time.Since(start)
 					d.Logger.InfoContext(ctx, "tool call", "tool", t.Name, "actor", c.Actor, "outcome", "ok",
-						"duration_ms", time.Since(start).Milliseconds())
+						"duration_ms", dur.Milliseconds())
+					var detail activity.Detail
+					if t.Record != nil {
+						var outID string
+						if outID, detail = t.Record(in, out); outID != "" {
+							id = outID
+						}
+					}
+					d.record(t.Name, c.Actor, kind, id, "", dur, detail)
 					return res, nil
 				}
 			}
@@ -201,12 +220,9 @@ func register[In, Out any](s *mcp.Server, d *Deps, t tool[In, Out]) {
 				d.Logger.InfoContext(ctx, "tool call", attrs...)
 			}
 			if t.Access != readOnly {
-				kind, id := "", ""
-				if t.Target != nil {
-					kind, id = t.Target(in)
-				}
 				d.audit(ctx, c.Actor, t.Name, kind, id, string(te.Code))
 			}
+			d.record(t.Name, c.Actor, kind, id, string(te.Code), time.Since(start), activity.Detail{})
 			return errorResult(te), nil
 		})
 }

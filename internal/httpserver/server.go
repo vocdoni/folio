@@ -154,10 +154,11 @@ func recoverer(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// Serve serves h on ln until ctx is cancelled, then stops accepting
+// Serve serves h on ln until ctx is cancelled, then runs beforeShutdown (to
+// end long-lived streams so they do not hold up the drain), stops accepting
 // connections and waits up to drain for in-flight requests (renders) to
 // finish. It returns nil after a clean shutdown.
-func Serve(ctx context.Context, ln net.Listener, h http.Handler, drain time.Duration, log *slog.Logger) error {
+func Serve(ctx context.Context, ln net.Listener, h http.Handler, drain time.Duration, log *slog.Logger, beforeShutdown ...func()) error {
 	srv := &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -172,6 +173,9 @@ func Serve(ctx context.Context, ln net.Listener, h http.Handler, drain time.Dura
 	case err := <-errc:
 		return fmt.Errorf("httpserver: %w", err)
 	case <-ctx.Done():
+	}
+	for _, f := range beforeShutdown {
+		f()
 	}
 	log.Info("shutting down: draining in-flight requests", "drain", drain.String())
 	sctx, cancel := context.WithTimeout(context.Background(), drain)
