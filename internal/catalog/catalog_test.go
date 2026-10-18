@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -241,4 +242,60 @@ func TestRetiredLabelKeysAccepted(t *testing.T) {
 	if len(fs) != 1 || fs[0].Path != "/labels/en/budget.grand" {
 		t.Fatalf("unknown key: %+v", fs)
 	}
+}
+
+// warnRenderer reports a non-placeholder warning and records the formats.
+type warnRenderer struct{ formats []model.Format }
+
+func (w *warnRenderer) Render(_ context.Context, req render.Request) (*render.Result, error) {
+	w.formats = req.Input.Formats
+	return &render.Result{PDF: []byte("%PDF-fake"), Pages: [][]byte{[]byte("png1")},
+		Warnings: []model.Finding{{Code: model.CodeEdgeInk, Severity: model.SeverityWarning, Message: "ink at the edge"}}}, nil
+}
+
+// TestDryRunTemplateWritesNothing: validation, brand resolution and the
+// sample render run with the requested formats; no rows, no blobs; the
+// create_template warning policy applies.
+func TestDryRunTemplateWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	s := newService(t)
+	if _, err := s.CreateBrand(ctx, "alice", brand(), ""); err != nil {
+		t.Fatal(err)
+	}
+	count := func() (n int) {
+		_ = s.DB.R.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM templates) + (SELECT count(*) FROM files)`).Scan(&n)
+		return n
+	}
+	blobs := func() int {
+		entries, _ := filepath.Glob(filepath.Join(filepath.Dir(s.DB.Path), "blobs", "sha256", "*", "*"))
+		return len(entries)
+	}
+	beforeRows, beforeBlobs := count(), blobs()
+	ws, res, err := s.DryRunTemplate(ctx, tmpl(), []model.Format{model.FormatPDF})
+	if err != nil || res == nil || len(res.Pages) != 1 || ws != nil {
+		t.Fatalf("dry run: %v %+v %v", ws, res, err)
+	}
+	if count() != beforeRows || blobs() != beforeBlobs {
+		t.Fatal("DryRunTemplate wrote rows or blobs")
+	}
+	bad := tmpl()
+	bad.Layout.Base = "poster"
+	if _, _, err := s.DryRunTemplate(ctx, bad, nil); !hasCode(err, model.ErrValidationFailed) {
+		t.Fatalf("invalid spec: %v", err)
+	}
+	missing := tmpl()
+	missing.BrandID = "nobody"
+	if _, _, err := s.DryRunTemplate(ctx, missing, nil); !hasCode(err, model.ErrNotFound) {
+		t.Fatalf("missing brand: %v", err)
+	}
+	wr := &warnRenderer{}
+	s.Renderer = wr
+	if _, _, err := s.DryRunTemplate(ctx, tmpl(), []model.Format{model.FormatPDF}); !hasCode(err, model.ErrValidationFailed) || len(wr.formats) != 1 {
+		t.Fatalf("warning policy: %v formats %v", err, wr.formats)
+	}
+}
+
+func hasCode(err error, code model.ErrorCode) bool {
+	me, ok := errors.AsType[*model.Error](err)
+	return ok && me.Code == code
 }

@@ -102,9 +102,10 @@ func (r *fakeRaster) SVGToPNG(context.Context, []byte) ([]byte, error) { return 
 
 type svc struct {
 	*fixture
-	r      *fakeRenderer
-	raster *fakeRaster
-	blobs  *store.Blobs
+	r       *fakeRenderer
+	raster  *fakeRaster
+	blobs   *store.Blobs
+	blobDir string
 }
 
 // newServices wires the real catalog, documents and assets services over the
@@ -113,7 +114,8 @@ func newServices(t *testing.T, tweak func(*Options)) *svc {
 	t.Helper()
 	sv := &svc{r: newFakeRenderer(t), raster: &fakeRaster{}}
 	f := newFixture(t, func(o *Options) {
-		blobs, err := store.NewBlobs(filepath.Join(t.TempDir(), "blobs"), o.Now)
+		sv.blobDir = filepath.Join(t.TempDir(), "blobs")
+		blobs, err := store.NewBlobs(sv.blobDir, o.Now)
 		if err != nil {
 			t.Fatal(err)
 		}

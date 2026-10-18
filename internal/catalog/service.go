@@ -211,11 +211,51 @@ func (s *Service) UpdateTemplate(ctx context.Context, actor, id string, expected
 	return s.putTemplate(ctx, actor, t, note, false, expectedVersion)
 }
 
-func (s *Service) putTemplate(ctx context.Context, actor string, t model.Template, note string, create bool, expected int) (*TemplateResult, error) {
+// checkTemplate validates the spec structurally and resolves its brand.
+func (s *Service) checkTemplate(ctx context.Context, t model.Template) (model.Brand, int, error) {
 	if fs := s.ValidateTemplate(t); model.HasErrors(fs) {
-		return nil, &model.Error{Code: model.ErrValidationFailed, Message: "the template is invalid; see details", Details: fs}
+		return model.Brand{}, 0, &model.Error{Code: model.ErrValidationFailed, Message: "the template is invalid; see details", Details: fs}
 	}
-	brand, brandVersion, err := s.ResolveBrand(ctx, t.BrandID, 0)
+	return s.ResolveBrand(ctx, t.BrandID, 0)
+}
+
+// sampleRender renders the sample with formats (nil = pdf and docx) and
+// applies create_template's policy: any warning other than a placeholder
+// fails the render.
+func (s *Service) sampleRender(ctx context.Context, t model.Template, b model.Brand, bv int, formats []model.Format) (*render.Result, error) {
+	res, err := s.Renderer.Render(ctx, render.Request{Template: t, Brand: b, BrandVersion: bv,
+		Input: model.DocumentInput{Markdown: t.Sample.Markdown, Metadata: t.Sample.Metadata, Data: t.Sample.Data, Formats: formats}})
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range res.Warnings {
+		if w.Code != model.CodePlaceholder {
+			return res, &model.Error{Code: model.ErrValidationFailed, Details: res.Warnings,
+				Message: "rendering the sample produced warnings; fix the sample or the layout"}
+		}
+	}
+	return res, nil
+}
+
+// DryRunTemplate runs everything create_template runs before saving —
+// structural validation, brand resolution, the sample render with formats
+// (nil = pdf and docx) and the same error/warning policy — and writes no
+// blobs and no rows. It returns the sample's warnings and render result, or
+// an error (*model.Error with findings in Details for invalid specs).
+func (s *Service) DryRunTemplate(ctx context.Context, t model.Template, formats []model.Format) ([]model.Finding, *render.Result, error) {
+	brand, brandVersion, err := s.checkTemplate(ctx, t)
+	if err != nil {
+		return nil, nil, err
+	}
+	res, err := s.sampleRender(ctx, t, brand, brandVersion, formats)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res.Warnings, res, nil
+}
+
+func (s *Service) putTemplate(ctx context.Context, actor string, t model.Template, note string, create bool, expected int) (*TemplateResult, error) {
+	brand, brandVersion, err := s.checkTemplate(ctx, t)
 	if err != nil {
 		return nil, err
 	}
@@ -228,15 +268,9 @@ func (s *Service) putTemplate(ctx context.Context, actor string, t model.Templat
 			return nil, conflict(KindTemplate, t.ID, cur.LatestVersion)
 		}
 	}
-	res, err := s.renderSample(ctx, t, 0, brand, brandVersion)
+	res, err := s.sampleRender(ctx, t, brand, brandVersion, nil)
 	if err != nil {
 		return nil, err
-	}
-	for _, w := range res.Warnings {
-		if w.Code != model.CodePlaceholder {
-			return nil, &model.Error{Code: model.ErrValidationFailed, Details: res.Warnings,
-				Message: "rendering the sample produced warnings; fix the sample or the layout"}
-		}
 	}
 	t.SpecVersion = model.SpecVersion
 	spec, err := canonicalSpec(t)

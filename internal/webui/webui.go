@@ -50,6 +50,7 @@ type Options struct {
 	Validator   catalog.Renderer // render.Pipeline (validate-only runs)
 	Raster      Rasterizer       // on-demand document pages
 	Queue       *render.Queue    // the MCP render queue (on-demand pages)
+	Preview     *catalog.Service // catalog bound to the UI preview pipeline (its own queue)
 	Activity    *activity.Recorder
 	Broadcaster *activity.Broadcaster
 	Reviewer    bool // the layout reviewer is configured
@@ -70,6 +71,7 @@ type Server struct {
 	limiter  *loginLimiter
 	static   *static
 	pages    *pageCache
+	previews *previewCache
 	handler  http.Handler
 
 	ipLogOnce sync.Once
@@ -104,6 +106,7 @@ func New(o Options) (*Server, error) {
 	s.limiter = newLoginLimiter(o.Now)
 	s.static = newStatic(o.Dist)
 	s.pages = newPageCache(pageCacheBytes)
+	s.previews = newPreviewCache(o.Now)
 	s.handler = s.securityHeaders(s.routes())
 	return s, nil
 }
@@ -112,11 +115,12 @@ func New(o Options) (*Server, error) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.handler.ServeHTTP(w, r) }
 
 // sessionEnded releases what a session owned (logout, expiry, eviction):
-// live streams (later: preview renders and AI jobs).
+// live streams and cached previews (later: AI jobs).
 func (s *Server) sessionEnded(id string) {
 	if s.o.Broadcaster != nil {
 		s.o.Broadcaster.CloseKey(id)
 	}
+	s.previews.dropSession(id)
 }
 
 func (s *Server) routes() http.Handler {
@@ -137,5 +141,6 @@ func (s *Server) routes() http.Handler {
 	s.documentRoutes(mux)
 	s.catalogRoutes(mux)
 	s.assetRoutes(mux)
+	s.previewRoutes(mux)
 	return mux
 }

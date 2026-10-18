@@ -105,7 +105,11 @@ func MemoryLimit(read func(string) ([]byte, error)) (limit uint64, ok bool) {
 // logMemoryBudget logs concurrency × per-process memory against the cgroup
 // limit and warns when the renders could exceed it.
 func logMemoryBudget(log *slog.Logger, cfg *config.Config, read func(string) ([]byte, error)) {
-	total := uint64(cfg.RenderConcurrency) * cfg.RenderMemory
+	slots := cfg.RenderConcurrency
+	if cfg.UIEnabled() {
+		slots += cfg.UIPreviewConcurrency // the web UI preview queue
+	}
+	total := uint64(slots) * cfg.RenderMemory
 	limit, ok := MemoryLimit(read)
 	attrs := []any{"render_concurrency", cfg.RenderConcurrency, "render_memory_bytes", cfg.RenderMemory, "render_total_bytes", total}
 	if !ok {
@@ -225,12 +229,19 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		return nil, err
 	}
 	queue := render.NewQueue(cfg.RenderConcurrency, cfg.RenderQueue)
+	// Web UI previews and example conversions get their own small queue so
+	// they can never take a render slot from agents.
+	previewQueue := render.NewQueue(cfg.UIPreviewConcurrency, 4)
 	as := &assets.Service{DB: db, Blobs: blobs, Fetcher: assets.NewFetcher(cfg.MaxAssetBytes), Raster: engine, MaxBytes: cfg.MaxAssetBytes, Now: o.Now}
 	pipeline := render.NewPipeline(render.PipelineConfig{Engine: engine, Queue: queue, Assets: as,
 		Limits:   validate.Limits{MaxMarkdownBytes: cfg.MaxMarkdownBytes, MaxNesting: cfg.MaxNesting, MaxTableCells: cfg.MaxTableCells},
 		MaxPages: cfg.MaxPages})
 	cat := &catalog.Service{DB: db, Blobs: blobs, Renderer: pipeline, Assets: as, PackagesDir: rt.PackagesDir, Now: o.Now,
 		PreviewTTL: cfg.PreviewRetention, PreviewPagesMax: cfg.PreviewPagesStored}
+	previewCat := *cat
+	previewCat.Renderer = render.NewPipeline(render.PipelineConfig{Engine: engine, Queue: previewQueue, Assets: as,
+		Limits:   validate.Limits{MaxMarkdownBytes: cfg.MaxMarkdownBytes, MaxNesting: cfg.MaxNesting, MaxTableCells: cfg.MaxTableCells},
+		MaxPages: cfg.MaxPages})
 	docs := &documents.Service{DB: db, Blobs: blobs, Renderer: pipeline, Resolver: cat, Now: o.Now,
 		PreviewPages: cfg.PreviewPagesStored, GCGrace: cfg.BlobGCGrace}
 	mc := maintenance.Config{Documents: docs, DB: db, BackupDir: filepath.Join(cfg.DataDir, "backups"), JobRoot: o.JobRoot,
@@ -261,7 +272,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 	var ui http.Handler
 	if cfg.UIEnabled() {
 		ws, err := webui.New(webui.Options{Config: cfg, DB: db, Blobs: blobs, Catalog: cat, Documents: docs, Assets: as,
-			Validator: pipeline, Raster: engine, Queue: queue, Activity: rec, Broadcaster: bc,
+			Validator: pipeline, Raster: engine, Queue: queue, Preview: &previewCat, Activity: rec, Broadcaster: bc,
 			Reviewer: rv != nil, Version: o.Version, Sandbox: string(level), Packages: packages, Logger: log, Now: o.Now})
 		if err != nil {
 			return nil, err
