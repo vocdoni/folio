@@ -109,7 +109,7 @@ redeploys the current image). Then:
 
 ```sh
 curl https://folio.example.com/healthz
-# {"status":"ok","version":"sha-…","sandbox":"landlock+rlimits","schema_version":1,"reviewer":false}
+# {"status":"ok","version":"sha-…","sandbox":"landlock+rlimits","schema_version":2,"reviewer":false}
 curl -s -o /dev/null -w '%{http_code}\n' -X POST https://folio.example.com/mcp   # 401
 ```
 
