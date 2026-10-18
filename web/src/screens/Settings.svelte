@@ -115,7 +115,7 @@
       {/if}
 
       <h3>Claude Code</h3>
-      <p>Install the Folio plugin. It sets up the MCP connection and the Folio skill together. The token is stored in your system keychain.</p>
+      <p>Install the Folio plugin. It sets up the MCP connection and the Folio skill together. Claude Code keeps the token with its other credentials.</p>
       <Copy text={claudeInstall(base, realToken)} display={claudeInstall(base, shownToken)} label="Claude Code install command" />
       <p class="small muted">Prefer to type the details yourself? Inside a Claude Code session, run these and paste the Folio address and the access token when asked:</p>
       <Copy text={claudePlugin.inSession} label="Claude Code in-session commands" />

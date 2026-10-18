@@ -329,9 +329,9 @@ test('Settings reveals and copies the token and shows user-wide installs @mobile
   await page.getByRole('button', { name: 'Show' }).click();
   await expect(page.getByRole('button', { name: 'Hide' })).toHaveAttribute('aria-pressed', 'true');
   await expect(cursor).toContainText(token);
-  await expect(plugin).toContainText(`--config folio_token=${token}`);
+  await expect(plugin).toContainText(`--config folio_token='${token}'`);
   await page.getByRole('button', { name: 'Copy Claude Code install command' }).click();
-  expect(await clipboard()).toContain(`--config folio_token=${token}`);
+  expect(await clipboard()).toContain(`--config folio_token='${token}'`);
   await page.getByRole('button', { name: 'Copy Cursor configuration' }).click();
   expect(await clipboard()).toContain(`"Authorization": "Bearer ${token}"`);
   await page.getByRole('button', { name: 'Copy Codex configuration' }).click();

@@ -198,13 +198,14 @@ the header `Authorization: Bearer <token>`. The examples use
 
 Claude Code connects through the Folio plugin. One install sets up both the
 MCP connection and the Folio skill, for your whole account. The address is
-your Folio address without `/mcp` (the plugin adds it); the token is stored
-in your operating system's keychain.
+your Folio address without `/mcp` (the plugin adds it); Claude Code keeps the
+token with its other credentials (the macOS keychain, or a private
+`~/.claude/.credentials.json` elsewhere).
 
 ```sh
 claude plugin install folio --marketplace vocdoni/folio --scope user \
   --config folio_url=https://folio.example.com \
-  --config folio_token=<token>
+  --config folio_token='<token>'
 ```
 
 `--marketplace` adds the marketplace first if it is missing. To keep the token

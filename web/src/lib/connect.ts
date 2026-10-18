@@ -35,13 +35,13 @@ export const claudePlugin = {
 
 /**
  * One command: adds the marketplace if missing, installs for the user and stores the
- * address (the bare base URL; the plugin appends /mcp) and the token (kept in the keychain).
+ * address (the bare base URL; the plugin appends /mcp) and the token (kept with Claude Code's credentials).
  */
 export function claudeInstall(base: string, token: string | null): string {
   return (
     'claude plugin install folio --marketplace vocdoni/folio --scope user \\\n' +
     `  --config folio_url=${base}` +
-    (token === null ? '' : ` \\\n  --config folio_token=${token}`)
+    (token === null ? '' : ` \\\n  --config folio_token='${token}'`)
   );
 }
 

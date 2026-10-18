@@ -12,11 +12,11 @@ describe('Claude Code', () => {
     expect(c).toContain('claude plugin install folio --marketplace vocdoni/folio --scope user');
     expect(c).toContain(`--config folio_url=${base}`);
     expect(c).not.toContain(`${base}/mcp`);
-    expect(c).toContain(`--config folio_token=${fake}`);
+    expect(c).toContain(`--config folio_token='${fake}'`);
   });
 
   it('masks the token for display and omits it when none is needed', () => {
-    expect(claudeInstall(base, MASK)).toContain(`folio_token=${MASK}`);
+    expect(claudeInstall(base, MASK)).toContain(`folio_token='${MASK}'`);
     expect(claudeInstall(base, null)).not.toContain('folio_token');
   });
 
