@@ -253,7 +253,7 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 			parentArg = parent
 		}
 		if inline != nil { // the revision's foreign key needs the row in this transaction
-			if err := insertInline(ctx, tx, t.ID, inline, actor, ts); err != nil {
+			if err := insertInline(ctx, tx, t.ID, inline, actor, ts, req.Template != nil); err != nil {
 				return err
 			}
 		}

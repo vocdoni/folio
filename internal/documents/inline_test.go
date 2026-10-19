@@ -160,6 +160,14 @@ func TestInlineRevisions(t *testing.T) {
 	if n := inlineRows(t, s); n != 2 {
 		t.Fatalf("inline rows = %d, want 2", n)
 	}
+	// A row written by another release of the struct (here: an extra key the
+	// decoder drops) must stay usable through template_id and revisions.
+	if _, err := s.DB.W.Exec(`UPDATE templates SET spec = substr(spec, 1, length(spec)-1) || ',"zz":1}' WHERE id = ?`, inlineID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Render(ctx, "bob", RenderRequest{TemplateID: inlineID, Input: in("after a shape change")}); err != nil {
+		t.Fatalf("by-id render after a struct change: %v", err)
+	}
 }
 
 // Concurrent renders of the same new inline spec all succeed on one row.
@@ -198,7 +206,9 @@ func TestInsertInlineCollisionGuard(t *testing.T) {
 	ctx := context.Background()
 	const id = "inline-00000000000000aa"
 	put := func(spec string) error {
-		return s.DB.WriteTx(ctx, func(tx *sql.Tx) error { return insertInline(ctx, tx, id, []byte(spec), "alice", store.Now(s.Now())) })
+		return s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
+			return insertInline(ctx, tx, id, []byte(spec), "alice", store.Now(s.Now()), true)
+		})
 	}
 	if err := put(`{"id":"inline-00000000000000aa","name":"A"}`); err != nil {
 		t.Fatal(err)

@@ -30,16 +30,17 @@ func (s *Service) resolveTemplate(ctx context.Context, req RenderRequest) (t mod
 }
 
 // insertInline stores inline template id (version 1, note "inline") inside
-// tx unless it exists. An existing row must hold the same spec: a different
-// one is a hash-prefix collision, and the render fails rather than use
-// another caller's template.
-func insertInline(ctx context.Context, tx *sql.Tx, id string, spec []byte, actor, ts string) error {
+// tx unless it exists. With guard (the spec came from the caller) an existing
+// row must hold the same spec: a different one is a hash-prefix collision,
+// and the render fails rather than use another caller's template. Without
+// guard (the spec was read from the row itself) an existing row is kept as is.
+func insertInline(ctx context.Context, tx *sql.Tx, id string, spec []byte, actor, ts string, guard bool) error {
 	res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO templates (id, version, spec, note, created_by, created_at)
 		VALUES (?, 1, ?, 'inline', ?, ?)`, id, string(spec), actor, ts)
 	if err != nil {
 		return fmt.Errorf("documents: insert inline template: %w", err)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if n, _ := res.RowsAffected(); n == 0 && guard {
 		var cur string
 		if err := tx.QueryRowContext(ctx, `SELECT spec FROM templates WHERE id = ? AND version = 1`, id).Scan(&cur); err != nil {
 			return fmt.Errorf("documents: read inline template: %w", err)
