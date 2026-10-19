@@ -308,3 +308,78 @@ func TestRetentionPassPrunesActivity(t *testing.T) {
 		t.Fatalf("after retention: %+v %v", rows, err)
 	}
 }
+
+// insertTemplateRow stores a template row as documents.Render does for an
+// inline template (note "inline"), or as a stored template (any other
+// note), created at the given time.
+func insertTemplateRow(t *testing.T, f *fixture, id, note string, created time.Time) {
+	t.Helper()
+	tp := model.Template{SpecVersion: 1, ID: id, Name: "Inline template", BrandID: "example", Languages: []string{"en"},
+		Layout: model.Layout{Base: "report"}, Sections: []model.Section{}, Components: []string{}}
+	spec, err := model.Canonical(tp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.cfg.DB.W.Exec(`INSERT INTO templates (id, version, spec, note, created_by, created_at) VALUES (?, 1, ?, ?, 'alice', ?)`,
+		id, string(spec), note, store.Now(created)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.cfg.DB.W.Exec(`INSERT INTO template_heads (id, latest_version) VALUES (?, 1)`, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func templateExists(t *testing.T, f *fixture, id string) bool {
+	t.Helper()
+	var rows, heads int
+	_ = f.cfg.DB.R.QueryRow(`SELECT count(*) FROM templates WHERE id = ?`, id).Scan(&rows)
+	_ = f.cfg.DB.R.QueryRow(`SELECT count(*) FROM template_heads WHERE id = ?`, id).Scan(&heads)
+	if rows != heads {
+		t.Fatalf("%s: %d template rows, %d heads", id, rows, heads)
+	}
+	return rows > 0
+}
+
+// Acceptance 9: the retention pass deletes unreferenced inline templates
+// older than the grace period and keeps referenced, younger and stored ones.
+func TestRetentionCollectsUnreferencedInlineTemplates(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	const (
+		old        = "inline-00000000000000a1"
+		young      = "inline-00000000000000b2"
+		referenced = "inline-00000000000000c3"
+	)
+	past := f.clk.Now().Add(-2 * time.Hour) // the grace period is one hour
+	insertTemplateRow(t, f, old, "inline", past)
+	insertTemplateRow(t, f, young, "inline", f.clk.Now())
+	insertTemplateRow(t, f, referenced, "inline", past)
+	insertTemplateRow(t, f, "inline-legacy", "inline", past) // not a hash id: never collected
+	insertTemplateRow(t, f, "unused", "v1", past)            // a stored template no document uses
+	doc, err := f.docs.Render(ctx, "alice", documents.RenderRequest{TemplateID: referenced, Input: model.DocumentInput{
+		Markdown: "uses the inline template", Metadata: json.RawMessage(`{"title":"T","date":"2026-10-18","language":"en"}`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := RetentionPass(ctx, f.cfg); err != nil {
+		t.Fatal(err)
+	}
+	if templateExists(t, f, old) {
+		t.Error("an old unreferenced inline template survived")
+	}
+	for _, id := range []string{young, referenced, "inline-legacy", "unused", "memo"} {
+		if !templateExists(t, f, id) {
+			t.Errorf("%s was collected", id)
+		}
+	}
+	// Once its last document is purged, the referenced one goes too.
+	if err := f.docs.Purge(ctx, "alice", doc.DocumentID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := RetentionPass(ctx, f.cfg); err != nil {
+		t.Fatal(err)
+	}
+	if templateExists(t, f, referenced) || !templateExists(t, f, young) {
+		t.Fatalf("after purge: referenced=%v young=%v", templateExists(t, f, referenced), templateExists(t, f, young))
+	}
+}
