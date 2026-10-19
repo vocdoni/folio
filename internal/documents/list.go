@@ -16,6 +16,7 @@ import (
 type ListFilter struct {
 	Query          string // case-insensitive substring of title or client
 	TemplateID     string
+	Inline         bool   // only documents whose current template is inline
 	Status         string // draft | published | trashed
 	Client         string
 	CreatedBy      string
@@ -29,6 +30,7 @@ type Summary struct {
 	ID                string    `json:"id"`
 	Title             string    `json:"title"`
 	TemplateID        string    `json:"template_id"`
+	TemplateInline    bool      `json:"template_inline"` // the current template is an inline template
 	Client            string    `json:"client"`
 	Status            string    `json:"status"`
 	LatestRevision    int       `json:"latest_revision"`
@@ -47,6 +49,9 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Summary, string, er
 		limit = 50
 	case limit > 200:
 		limit = 200
+	}
+	if f.Inline && f.TemplateID != "" {
+		return nil, "", &model.Error{Code: model.ErrInvalidInput, Message: "pass template_id or inline=true, not both"}
 	}
 	q := `SELECT id, title, template_id, client, status, latest_revision, coalesce(published_revision, 0), created_by, created_at, updated_at
 	      FROM documents WHERE 1=1`
@@ -69,6 +74,9 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Summary, string, er
 			args = append(args, v)
 		}
 	}
+	if f.Inline {
+		q += ` AND template_id LIKE 'inline-%'`
+	}
 	if f.Query != "" {
 		like := "%" + strings.ToLower(f.Query) + "%"
 		q += ` AND (lower(title) LIKE ? OR lower(client) LIKE ?)`
@@ -89,7 +97,7 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]Summary, string, er
 		if err := rows.Scan(&d.ID, &d.Title, &d.TemplateID, &d.Client, &d.Status, &d.LatestRevision, &d.PublishedRevision, &d.CreatedBy, &created, &updated); err != nil {
 			return nil, "", fmt.Errorf("documents: scan: %w", err)
 		}
-		d.CreatedAt, d.UpdatedAt = parseTS(created), parseTS(updated)
+		d.CreatedAt, d.UpdatedAt, d.TemplateInline = parseTS(created), parseTS(updated), model.IsInlineID(d.TemplateID)
 		out = append(out, d)
 		lastTS = append(lastTS, created)
 	}

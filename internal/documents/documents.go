@@ -34,6 +34,9 @@ type Renderer interface {
 type Resolver interface {
 	ResolveTemplate(ctx context.Context, id string, version int, allowArchived bool) (model.Template, int, error)
 	ResolveBrand(ctx context.Context, id string, version int) (model.Brand, int, error)
+	// InlineTemplate normalises and validates an inline template spec and
+	// returns it with its canonical spec JSON; it writes nothing.
+	InlineTemplate(ctx context.Context, spec model.Template, callBrand string, metadata json.RawMessage) (model.Template, []byte, error)
 }
 
 // Service is the documents API used by P2's MCP tools.
@@ -49,9 +52,10 @@ type Service struct {
 
 // RenderRequest mirrors the render_document tool input.
 type RenderRequest struct {
-	TemplateID       string
-	TemplateVersion  int    // 0 = latest
-	BrandID          string // "" = the template's brand
+	TemplateID       string          // stored or inline template id
+	Template         *model.Template // inline template spec; exclusive with TemplateID
+	TemplateVersion  int             // 0 = latest; with an inline template only 0 or 1
+	BrandID          string          // "" = the template's brand
 	Input            model.DocumentInput
 	DocumentID       string // "" = new document
 	ExpectedRevision *int   // required with DocumentID
@@ -104,6 +108,12 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 	if len(req.IdempotencyKey) > 128 {
 		return nil, errorf(model.ErrInvalidInput, "idempotency_key must be at most 128 characters")
 	}
+	if req.Template != nil && req.TemplateID != "" {
+		return nil, errorf(model.ErrInvalidInput, "pass template_id or template (an inline template), not both")
+	}
+	if req.Template != nil && req.TemplateVersion != 0 {
+		return nil, errorf(model.ErrInvalidInput, "template_version does not apply to an inline template (template)")
+	}
 	var doc *docRow
 	if req.DocumentID != "" {
 		if req.ExpectedRevision == nil {
@@ -122,8 +132,8 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 		if *req.ExpectedRevision != doc.Latest {
 			return nil, errorf(model.ErrConflict, "document %s is at revision %d; re-read it and pass expected_revision=%d", doc.ID, doc.Latest, doc.Latest)
 		}
-		if req.TemplateID == "" {
-			req.TemplateID = doc.TemplateID
+		if req.TemplateID == "" && req.Template == nil {
+			req.TemplateID = doc.TemplateID // the current template, stored or inline
 		}
 	} else if req.IdempotencyKey != "" {
 		if id, err := s.lookupKey(ctx, s.DB.R, actor, req.IdempotencyKey, now); err != nil {
@@ -132,7 +142,7 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 			return s.unchanged(ctx, id, 0)
 		}
 	}
-	t, tv, err := s.Resolver.ResolveTemplate(ctx, req.TemplateID, req.TemplateVersion, false)
+	t, tv, inline, err := s.resolveTemplate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +197,7 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 	}
 	_ = json.Unmarshal(req.Input.Metadata, &meta) // validated by the pipeline
 
-	out := &RenderResult{Template: model.Ref{ID: t.ID, Version: tv}, Brand: model.Ref{ID: b.ID, Version: bv},
+	out := &RenderResult{Template: model.TemplateRef(t.ID, tv), Brand: model.Ref{ID: b.ID, Version: bv},
 		Files: files, Warnings: res.Warnings}
 	err = s.DB.WriteTx(ctx, func(tx *sql.Tx) error {
 		ts := store.Now(now)
@@ -242,6 +252,11 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 		if parent > 0 {
 			parentArg = parent
 		}
+		if inline != nil { // the revision's foreign key needs the row in this transaction
+			if err := insertInline(ctx, tx, t.ID, inline, actor, ts); err != nil {
+				return err
+			}
+		}
 		// revisions.computed keeps its default '{}': Folio derives no values
 		// from the input any more, and nothing reads the column.
 		if _, err := tx.ExecContext(ctx, `INSERT INTO revisions (document_id, revision, parent_revision, template_id, template_version,
@@ -262,7 +277,11 @@ func (s *Service) Render(ctx context.Context, actor string, req RenderRequest) (
 			}
 		}
 		out.Revision = revision
-		return store.Audit(ctx, tx, now, actor, "render_document", "document", out.DocumentID, "ok", []byte(fmt.Sprintf(`{"revision":%d}`, revision)))
+		detail := fmt.Sprintf(`{"revision":%d}`, revision)
+		if inline != nil {
+			detail = fmt.Sprintf(`{"revision":%d,"template":%q}`, revision, t.ID)
+		}
+		return store.Audit(ctx, tx, now, actor, "render_document", "document", out.DocumentID, "ok", []byte(detail))
 	})
 	if errors.Is(err, errUnchanged) {
 		return s.unchanged(ctx, out.DocumentID, 0)
