@@ -106,7 +106,7 @@ send the template with the call instead of creating one:
 {
   "template": {"layout": {"base": "letter"}, "sections": [{"title": "Greeting", "required": true}]},
   "brand_id": "example",
-  "idempotency_key": "thank-you-globex-2026-10-19",
+  "idempotency_key": "globex-thanks-1",
   "metadata": {"title": "Thank you", "date": "2026-10-19", "language": "en", "client": "Globex"},
   "markdown": "# Greeting\n\nThank you for choosing us for the Globex website."
 }
