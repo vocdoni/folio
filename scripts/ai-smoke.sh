@@ -16,6 +16,8 @@
 #   FOLIO_BIN                  use this binary instead of building one
 #   AI_SMOKE_PORT              loopback port (default: a free one)
 #   AI_SMOKE_DEADLINE          seconds per assistant (default 150)
+#   AI_SMOKE_DRAFT             description for the template-draft assistant
+#                              (default: a one-page meeting minutes template)
 #
 # Needs: go (unless FOLIO_BIN), curl, jq, python3, openssl. The API key is
 # read from the environment only; it is never printed or written to disk.
@@ -188,7 +190,7 @@ started="$(post_json /ui/api/ai/document-plan --arg m "$plan_md" '{markdown: $m,
 finish "document-plan (proposal)" "$started" "$plan_summary" "$begin"
 
 begin=$SECONDS
-started="$(post_json /ui/api/ai/template-draft --arg d 'A one-page meeting minutes template with attendees, decisions and an action items table.' '{description: $d}')"
+started="$(post_json /ui/api/ai/template-draft --arg d "${AI_SMOKE_DRAFT:-A one-page meeting minutes template with attendees, decisions and an action items table.}" '{description: $d}')"
 finish "template-draft" "$started" "$draft_summary" "$begin"
 
 begin=$SECONDS

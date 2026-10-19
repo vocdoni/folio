@@ -45,7 +45,8 @@ func draftAnswerJSON(tweak func(m map[string]any)) string {
 			"markdown": "# Services\n\nNetwork care.\n\n# Fees\n\n::: folio-budget\n:::\n",
 			"metadata": map[string]any{"title": "Network care", "date": "2026-10-18", "language": "en",
 				"fields": []any{map[string]any{"name": "term", "value": "12 months"}, map[string]any{"name": "client", "value": "ACME Corp"}}},
-			"data": map[string]any{"budget": map[string]any{"items": []any{map[string]any{"description": "Care", "amount": "€5,400.00"}}}},
+			"data": map[string]any{"budget": map[string]any{"items": []any{map[string]any{"description": "Care", "amount": "€5,400.00"}}},
+				"signatures": []any{map[string]any{"name": "Jane Doe"}}},
 		},
 	}
 	if tweak != nil {
@@ -134,7 +135,7 @@ func TestDraftTemplateBuildsTheSchemas(t *testing.T) {
 		t.Fatalf("data_schema %s", checked.DataSchema)
 	}
 	if string(checked.Sample.Metadata) != `{"client":"ACME Corp","date":"2026-10-18","language":"en","term":"12 months","title":"Network care"}` ||
-		string(checked.Sample.Data) != `{"budget":{"items":[{"amount":"€5,400.00","description":"Care"}]}}` {
+		string(checked.Sample.Data) != `{"budget":{"items":[{"amount":"€5,400.00","description":"Care"}]},"signatures":[{"name":"Jane Doe"}]}` {
 		t.Fatalf("sample %s %s", checked.Sample.Metadata, checked.Sample.Data)
 	}
 	if string(checked.Layout.Options) != `{"cover":true,"toc":false,"page_size":"a4","heading_numbering":true}` || checked.Layout.Typst != nil ||
@@ -169,6 +170,61 @@ func TestDraftTemplateRepairQuotesAPreview(t *testing.T) {
 	ask := fmt.Sprint(m[3]["content"])
 	if !strings.Contains(ask, "metadata_fields[0] (tier): type enum needs at least one choice") || !strings.Contains(ask, "metadata_fields[1] (Bad Name): the name must be") {
 		t.Fatalf("repair problems: %s", ask)
+	}
+}
+
+// TestDraftTemplateRepairsDuplicateComponents: a component declared by two
+// sections is a problem sent back in the repair round, before any check.
+func TestDraftTemplateRepairsDuplicateComponents(t *testing.T) {
+	dup := draftAnswerJSON(func(m map[string]any) {
+		m["sections"] = []any{
+			map[string]any{"title": "Environment", "required": true, "aliases": []string{}, "hint": "", "component": "info"},
+			map[string]any{"title": "Results", "required": true, "aliases": []string{}, "hint": "", "component": "info"},
+			map[string]any{"title": "Fees", "required": true, "aliases": []string{}, "hint": "", "component": "budget"},
+			map[string]any{"title": "Signatures", "required": false, "aliases": []string{}, "hint": "", "component": "signatures"},
+		}
+	})
+	c, s := newScripted(t, dup, draftAnswerJSON(nil))
+	calls := 0
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(context.Context, model.Template) ([]model.Finding, bool, error) {
+		calls++
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || !d.Repaired || calls != 1 || len(s.requests) != 2 {
+		t.Fatalf("draft %+v %v (%d checks, %d requests)", d, err, calls, len(s.requests))
+	}
+	ask := fmt.Sprint(messagesOf(s.requests[1])[3]["content"])
+	if !strings.Contains(ask, `sections: component info is declared by "Environment", "Results"; a component sits in one section`) ||
+		!strings.Contains(ask, "Markdown pipe tables") {
+		t.Fatalf("repair problems: %s", ask)
+	}
+}
+
+// TestSpecFromAnswerMissingSampleData: every data component the template
+// uses needs sample data; the spec stays usable.
+func TestSpecFromAnswerMissingSampleData(t *testing.T) {
+	var a draftAnswer
+	_ = json.Unmarshal([]byte(draftAnswerJSON(func(m map[string]any) {
+		m["components"] = []string{"budget", "signatures", "deliverables"}
+	})), &a)
+	tpl, problems := specFromAnswer(a)
+	got := strings.Join(problems, "\n")
+	if !strings.Contains(got, "sample.data.deliverables is missing: give data for every component the template uses") ||
+		strings.Contains(got, "sample.data.budget") || strings.Contains(got, "sample.data.info") || tpl.ID != "service-agreement" {
+		t.Fatalf("problems %q", got)
+	}
+}
+
+// TestDraftPromptExplainsComponents: the prompt says a component sits in one
+// section, info is the details box and other tables are pipe tables.
+func TestDraftPromptExplainsComponents(t *testing.T) {
+	for _, want := range []string{"at most one section declares it", "info is the document-details box", "is not a general table", "Markdown pipe table", `component ""`, "EVERY data component"} {
+		if !strings.Contains(draftSystem, want) {
+			t.Errorf("draftSystem lacks %q", want)
+		}
+	}
+	if g := componentGuide(components.Names); !strings.Contains(g, "not a general table") {
+		t.Errorf("componentGuide: %s", g)
 	}
 }
 
