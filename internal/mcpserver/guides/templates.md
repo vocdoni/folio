@@ -133,6 +133,37 @@ Budget total rows have no label keys: their labels are the `label` of each
 keys `budget.subtotal`, `budget.tax` and `budget.total` are still accepted in
 `labels` and ignored.
 
+## Inline templates
+
+`render_document` and `validate_document` also take a spec inline
+(`template` instead of `template_id`) for one-off documents. Every field is
+optional and Folio fills the rest: `brand_id` from the call's `brand_id` or
+the default brand (`get_capabilities.default_brand`), `languages` `["en"]`
+plus `metadata.language`, `layout.base` `report` with `cover` on for
+`report` and `proposal` and off for `quote` and `letter`, and every
+component when `components` is absent (`[]` allows none). `id`, `name`,
+`description`, `category`, `body_skeleton` and `sample` are ignored. A
+richer one:
+
+```json
+{"layout": {"base": "quote", "options": {"page_size": "letter"}},
+ "sections": [{"title": "Summary", "required": true}, {"title": "Budget", "required": true, "component": "budget"}],
+ "components": ["budget"],
+ "metadata_schema": {"type": "object", "required": ["client"], "properties": {"client": {"type": "string"}}},
+ "data_schema": {"type": "object", "required": ["budget"], "properties": {"budget": {"$ref": "folio:component/budget"}}}}
+```
+
+Folio runs the stored-template checks except the sample (a custom
+`layout.typst` included; its size is limited to
+`get_capabilities.limits.max_layout_typst_bytes` for every template). The
+filled-in spec gets the id `inline-` plus 16 hex characters of its hash,
+version 1: equal specs share it and nothing can change it. The id `inline`
+and every id starting with `inline-` are reserved: `create_template`
+refuses them, and `update_template`, `archive_template` and
+`preview_template` answer `not_found` for inline ids. Inline templates never
+appear in `list_templates`; `get_template` reads them (`inline: true`) and
+`save_inline_template` turns one into a regular template.
+
 ## Versions and archiving
 
 - `create_template` creates version 1. `update_template(id, expected_version, template)`

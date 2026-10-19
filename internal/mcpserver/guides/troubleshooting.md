@@ -25,12 +25,12 @@ template is strict.
 
 | code | meaning | what to do |
 |---|---|---|
-| `invalid_input` | arguments are malformed: unknown or misspelt fields, wrong types, an invalid cursor, both or neither of `content_base64`/`url`, a missing `expected_revision`, `confirm_published` not set, a page number beyond the PDF's pages | read the message and the tool's input schema; retrying unchanged fails |
-| `validation_failed` | the document, template or brand breaks a rule; `details` lists every finding | fix each finding (path, hint), then retry |
+| `invalid_input` | arguments are malformed: unknown or misspelt fields, wrong types, an invalid cursor, both or neither of `content_base64`/`url`, a missing `expected_revision`, `confirm_published` not set, a page number beyond the PDF's pages, `template` together with `template_id` or `template_version`, an inline template without a brand (`pass brand_id`), a template id reserved for inline templates (`inline-…`) | read the message and the tool's input schema; retrying unchanged fails |
+| `validation_failed` | the document, template or brand breaks a rule; `details` lists every finding (paths under `/template` point into an inline `template`) | fix each finding (path, hint), then retry |
 | `not_found` | the id (or version, revision) does not exist | check it with the matching `list_*` or `get_*` tool |
 | `conflict` | `expected_version` / `expected_revision` is stale, the id already exists, or the document is in the trash | re-read the current state, re-apply your change, retry with the version or revision named in the message; restore trashed documents first |
 | `archived` | the template or brand is archived | `archive_template(id, false)` / `archive_brand(id, false)`, or choose another |
-| `too_large` | an upload exceeds the size limit, or an SVG rasterises beyond the pixel or byte limit (50 million pixels) | upload a smaller file (`get_capabilities.limits.max_asset_bytes`); for an SVG, reduce its `width`/`height` |
+| `too_large` | an upload exceeds the size limit, an SVG rasterises beyond the pixel or byte limit (50 million pixels), or an inline template or a `layout.typst` exceeds `get_capabilities.limits` (`max_inline_template_bytes`, `max_layout_typst_bytes`) | upload a smaller file (`get_capabilities.limits.max_asset_bytes`); for an SVG, reduce its `width`/`height`; store a large template with `create_template` and keep custom layouts short |
 | `busy` | the render queue is full | retry in a few seconds with the same arguments and `idempotency_key` |
 | `timeout` | pandoc or typst exceeded the render time limit | simplify: fewer nested blocks, smaller tables, a simpler custom layout |
 | `render_failed` | pandoc or typst failed, or an output check failed (invalid PDF/DOCX, too many pages, missing brand logo) | read the message: for custom layouts it quotes Typst's error; fix the layout or the content |
@@ -102,5 +102,11 @@ except `placeholder`, so fix layouts until the sample renders cleanly.
   `get_document` for current links (restore trashed documents first).
 - **The first render after a retry created a duplicate.** Always pass an
   `idempotency_key` for new documents.
+- **`pass brand_id (available brands: …)`.** An inline template names no
+  brand and the instance has no default (several live brands and no
+  `FOLIO_DEFAULT_BRAND`): pass `brand_id`.
+- **`not_found` from `update_template` on an `inline-…` id.** Inline
+  templates are immutable: render with a changed `template` (it gets a new
+  id), or `save_inline_template` and update the saved template.
 - **Text in the wrong language in tables.** Set `metadata.language`; table
   labels follow it (override them with template `labels`).
