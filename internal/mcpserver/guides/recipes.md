@@ -1,6 +1,6 @@
 # Recipes
 
-Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, and creating a brand and template.
+Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, a one-off document without a stored template, and creating a brand and template.
 
 Each recipe names the tools to call in order. The starter templates
 (`proposal`, `quote`, `sow`, `requirements`, `technical-report`) exist on a
@@ -91,6 +91,31 @@ accept, and write the figures the local way (`4.464,90 €`).
    your change. A result with `unchanged: true` means your input was
    identical to the latest revision.
 5. When the document is final, `publish_document(id, revision)`.
+
+## A one-off document (inline template)
+
+For a document no stored template fits, such as a single thank-you letter,
+send the template with the call instead of creating one:
+
+1. `get_capabilities`: `default_brand` is the brand used when you pass no
+   `brand_id`; when it is empty, pick one with `list_brands`.
+2. `validate_document` with `template` instead of `template_id`, then
+   `render_document` with the same arguments and an `idempotency_key`:
+
+```json
+{
+  "template": {"layout": {"base": "letter"}, "sections": [{"title": "Greeting", "required": true}]},
+  "brand_id": "example",
+  "idempotency_key": "thank-you-globex-2026-10-19",
+  "metadata": {"title": "Thank you", "date": "2026-10-19", "language": "en", "client": "Globex"},
+  "markdown": "# Greeting\n\nThank you for choosing us for the Globex website."
+}
+```
+
+3. Revise it like any document (no `template` needed: it keeps its inline
+   template). When the user wants the same layout again,
+   `save_inline_template(document_id, id, name)` makes it a regular
+   template; then use `template_id` = that id.
 
 ## Create a brand and a template
 

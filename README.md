@@ -654,6 +654,39 @@ Mark revision 2 as final:
 `"purge": true` deletes it for good (published documents also need
 `"confirm_published": true`).
 
+### Render without a stored template
+
+For a one-off document, pass the template in the call (`template`, the
+`create_template` spec with every field optional) instead of a
+`template_id`. `{"template": {}}` uses the default brand
+(`get_capabilities.default_brand`, see `FOLIO_DEFAULT_BRAND`) and the
+`report` layout; this letter names its brand and base layout:
+
+<!-- folio-example tool=render_document -->
+```json
+{
+  "template": {"layout": {"base": "letter"}, "sections": [{"title": "Greeting", "required": true}]},
+  "brand_id": "acme",
+  "idempotency_key": "letter-001",
+  "metadata": {"title": "Thank you", "date": "2026-10-19", "language": "en", "client": "Globex"},
+  "markdown": "# Greeting\n\nThank you for choosing ACME Studio for the Globex website."
+}
+```
+
+The result's template is `{"id": "inline-…", "version": 1, "inline": true}`:
+revisions keep it, `template_id: "inline-…"` reuses it, and it never shows
+up in `list_templates` or the Templates screen (documents show "Inline
+template"). To keep it as a regular template, with the document's latest
+input as its sample:
+
+<!-- folio-example tool=save_inline_template -->
+```json
+{"document_id": "<document_id>", "id": "acme-letter", "name": "ACME letter", "category": "letter"}
+```
+
+Unused inline templates are deleted by the retention pass once no revision
+references them.
+
 ### Components and figures
 
 Components are empty fenced divs that Folio fills from `data`:

@@ -14,14 +14,17 @@ func TestRecipesGuideCoversTheJobs(t *testing.T) {
 		"`list_templates", "`get_template", "`validate_document`", "`render_document`", "`get_document", "`publish_document",
 		"`upload_asset`", "`create_brand`", "`create_template`", "`preview_template", "`update_template", "expected_revision",
 		"idempotency_key", "data.budget.totals", "send every value exactly as it should appear",
+		"## A one-off document", "save_inline_template", "default_brand",
 	})
 	md := guide(t, "recipes")
 	blocks := strings.Split(md, "```json\n")
-	if len(blocks) != 2 {
-		t.Fatalf("recipes: want exactly one json example, got %d", len(blocks)-1)
+	if len(blocks) != 3 {
+		t.Fatalf("recipes: want two json examples (quote, one-off document), got %d", len(blocks)-1)
 	}
-	body, _, ok := strings.Cut(blocks[1], "\n```")
-	if !ok || !json.Valid([]byte(body)) {
-		t.Fatal("recipes: the json example must be valid JSON")
+	for _, b := range blocks[1:] {
+		body, _, ok := strings.Cut(b, "\n```")
+		if !ok || !json.Valid([]byte(body)) {
+			t.Fatal("recipes: every json example must be valid JSON")
+		}
 	}
 }

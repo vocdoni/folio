@@ -159,13 +159,15 @@ func TestWorkflowGuideNamesEveryTool(t *testing.T) {
 	tools := []string{"get_guide", "get_capabilities", "list_brands", "get_brand", "create_brand", "update_brand", "archive_brand",
 		"list_templates", "get_template", "create_template", "update_template", "archive_template", "preview_template",
 		"upload_asset", "list_assets", "update_asset", "delete_asset", "validate_document", "render_document", "list_documents", "get_document",
-		"review_document", "publish_document", "delete_document", "restore_document"}
+		"review_document", "publish_document", "delete_document", "restore_document", "save_inline_template"}
 	var words []string
 	for _, n := range tools {
 		words = append(words, "`"+n+"`")
 	}
-	words = append(words, "idempotency_key", "expected_revision", "expected_version", "include_source", "confirm_published", "next_cursor")
+	words = append(words, "idempotency_key", "expected_revision", "expected_version", "include_source", "confirm_published", "next_cursor",
+		"default_brand", "max_inline_template_bytes", "max_layout_typst_bytes", "/template/")
 	requireAll(t, "workflow", words)
+	requireAll(t, "templates", []string{"## Inline templates", "`inline-`", "save_inline_template", "default_brand"})
 }
 
 func TestMarkdownGuideCoversTheDialect(t *testing.T) {
