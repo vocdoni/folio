@@ -43,12 +43,12 @@
   <p>The new template keeps this document’s layout, sections and schemas; its latest text becomes the template’s sample.</p>
   <div class="field">
     <label for="{uid}-id">Template id</label>
-    <input id="{uid}-id" bind:value={id} autocomplete="off" spellcheck="false" aria-describedby="{uid}-id-help" aria-invalid={idProblem ? 'true' : undefined} />
+    <input id="{uid}-id" type="text" bind:value={id} autocomplete="off" spellcheck="false" aria-describedby="{uid}-id-help" aria-invalid={idProblem ? 'true' : undefined} />
     <span id="{uid}-id-help" class={idProblem ? 'error-text' : 'help'}>{idProblem || 'For example client-letter.'}</span>
   </div>
   <div class="field">
     <label for="{uid}-name">Name</label>
-    <input id="{uid}-name" bind:value={name} autocomplete="off" />
+    <input id="{uid}-name" type="text" bind:value={name} autocomplete="off" />
   </div>
   {#if error}<p class="note error" role="alert">{error}</p>{/if}
 </Dialog>
