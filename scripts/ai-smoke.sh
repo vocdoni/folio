@@ -178,7 +178,7 @@ finish() {
 }
 
 plan_summary='.result | "template \(.template_id), \(.metadata | length) metadata keys, \(.inferred | length) inferred, \(.warnings | length) warnings"'
-draft_summary='.result | "draft \(.spec.id), ok=\(.ok), \(.findings | length) findings, repaired=\(.repaired)"'
+draft_summary='.result | "draft \(.spec.id), ok=\(.ok), \(.findings | length) findings, repaired=\(.repaired)" + ([.findings[] | "\n      \(.severity) \(.code) \(.path // ""): \(.message)"] | join(""))'
 brand_summary='.result | "brand \(.brand.name), primary \(.brand.colors.primary), \((.evidence.images // []) | length) logo candidates, \((.swatches // []) | length) swatches"'
 
 begin=$SECONDS
