@@ -7,6 +7,7 @@ package maintenance
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -60,7 +61,8 @@ func Startup(ctx context.Context, c Config) error {
 
 // RetentionPass purges documents trashed longer than TrashRetention and
 // deletes expired files (template previews); both run blob GC afterwards.
-// It also deletes activity rows older than ActivityRetention.
+// It also deletes activity rows older than ActivityRetention and inline
+// templates no revision references that are older than the blob GC grace.
 func RetentionPass(ctx context.Context, c Config) (purged int, expired int64, err error) {
 	if c.ActivityRetention > 0 {
 		n, err := activity.Prune(ctx, c.DB, c.Now().Add(-c.ActivityRetention))
@@ -77,10 +79,60 @@ func RetentionPass(ctx context.Context, c Config) (purged int, expired int64, er
 	if expired, err = c.Documents.DeleteExpiredFiles(ctx); err != nil {
 		return purged, 0, fmt.Errorf("maintenance: expire files: %w", err)
 	}
-	if purged > 0 || expired > 0 {
-		c.Logger.Info("retention pass", "documents_purged", purged, "files_expired", expired)
+	inline, err := collectInlineTemplates(ctx, c.DB, c.Now().Add(-c.Documents.GCGrace))
+	if err != nil {
+		return purged, expired, fmt.Errorf("maintenance: collect inline templates: %w", err)
+	}
+	if purged > 0 || expired > 0 || inline > 0 {
+		c.Logger.Info("retention pass", "documents_purged", purged, "files_expired", expired, "inline_templates_deleted", inline)
 	}
 	return purged, expired, nil
+}
+
+// inlineGlob matches inline template ids: "inline-" and 16 lowercase hex.
+var inlineGlob = "inline-" + strings.Repeat("[0-9a-f]", 16)
+
+// collectInlineTemplates deletes the inline template rows (templates and
+// template_heads) that no revision references and that were created before
+// cutoff. Only rows a render inserted qualify (id inline-<16 hex>, version
+// 1, note "inline"); stored templates are never collected. A render inserts
+// its row in the transaction that inserts the referencing revision, and
+// re-inserts it if this pass removed it in between.
+func collectInlineTemplates(ctx context.Context, db *store.DB, cutoff time.Time) (int, error) {
+	var n int
+	err := db.WriteTx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM templates
+			WHERE id GLOB ? AND version = 1 AND note = 'inline' AND created_at <= ?
+			  AND id NOT IN (SELECT template_id FROM revisions WHERE template_id LIKE 'inline-%')
+			  AND id NOT IN (SELECT template_id FROM files WHERE template_id IS NOT NULL)`, inlineGlob, store.Now(cutoff))
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM template_heads WHERE id = ?`, id); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM templates WHERE id = ?`, id); err != nil {
+				return err
+			}
+		}
+		n = len(ids)
+		return nil
+	})
+	return n, err
 }
 
 const backupPrefix, backupSuffix = "folio-", ".db"

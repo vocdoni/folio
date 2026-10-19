@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/vocdoni/folio/internal/activity"
+	"github.com/vocdoni/folio/internal/catalog"
+	"github.com/vocdoni/folio/internal/store"
 )
 
 func TestStatsActivityAndCapabilities(t *testing.T) {
@@ -22,6 +24,7 @@ func TestStatsActivityAndCapabilities(t *testing.T) {
 	f := newFixture(t, func(o *Options) {
 		rec = activity.NewRecorder(o.DB, nil, o.Logger, o.Now)
 		o.Activity = rec
+		o.Catalog = &catalog.Service{DB: o.DB, Now: o.Now} // capabilities resolve the default brand
 	})
 	f.login()
 	for _, row := range []activity.Row{
@@ -156,5 +159,30 @@ func TestLogoutEndsSessionStreams(t *testing.T) {
 	case <-sub.Done:
 	case <-time.After(time.Second):
 		t.Fatal("logout must end the session's live streams")
+	}
+}
+
+// Inline templates never count as templates: the overview reports them
+// apart; the capabilities report the default brand and the inline limits.
+func TestStatsSeparateInlineTemplates(t *testing.T) {
+	sv := newServices(t, nil)
+	decode[map[string]any](t, sv.do("POST", "/ui/api/brands", BrandIn{Brand: brandSpec("acme")}, nil), 200)
+	decode[TemplateSavedOut](t, sv.do("POST", "/ui/api/templates", TemplateIn{Template: templateSpec("memo", "acme")}, nil), 200)
+	for _, id := range []string{"inline-00000000000000a1", "inline-00000000000000b2"} {
+		if _, err := sv.opts.DB.W.Exec(`INSERT INTO templates (id, version, spec, note, created_by, created_at) VALUES (?, 1, '{}', 'inline', 'alice', ?)`,
+			id, store.Now(sv.opts.Now())); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sv.opts.DB.W.Exec(`INSERT INTO template_heads (id, latest_version) VALUES (?, 1)`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st := decode[StatsOut](t, sv.do(http.MethodGet, "/ui/api/stats", nil, nil), 200)
+	if st.Templates != 1 || st.InlineTemplates != 2 {
+		t.Fatalf("templates %d, inline %d", st.Templates, st.InlineTemplates)
+	}
+	caps := decode[CapabilitiesOut](t, sv.do(http.MethodGet, "/ui/api/capabilities", nil, nil), 200)
+	if caps.DefaultBrand != "acme" {
+		t.Fatalf("default brand %q", caps.DefaultBrand)
 	}
 }
