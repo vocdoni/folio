@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -45,7 +47,8 @@ func draftAnswerJSON(tweak func(m map[string]any)) string {
 			"markdown": "# Services\n\nNetwork care.\n\n# Fees\n\n::: folio-budget\n:::\n",
 			"metadata": map[string]any{"title": "Network care", "date": "2026-10-18", "language": "en",
 				"fields": []any{map[string]any{"name": "term", "value": "12 months"}, map[string]any{"name": "client", "value": "ACME Corp"}}},
-			"data": map[string]any{"budget": map[string]any{"items": []any{map[string]any{"description": "Care", "amount": "€5,400.00"}}}},
+			"data": map[string]any{"budget": map[string]any{"items": []any{map[string]any{"description": "Care", "amount": "€5,400.00"}}},
+				"signatures": []any{map[string]any{"name": "Jane Doe"}}},
 		},
 	}
 	if tweak != nil {
@@ -134,7 +137,7 @@ func TestDraftTemplateBuildsTheSchemas(t *testing.T) {
 		t.Fatalf("data_schema %s", checked.DataSchema)
 	}
 	if string(checked.Sample.Metadata) != `{"client":"ACME Corp","date":"2026-10-18","language":"en","term":"12 months","title":"Network care"}` ||
-		string(checked.Sample.Data) != `{"budget":{"items":[{"amount":"€5,400.00","description":"Care"}]}}` {
+		string(checked.Sample.Data) != `{"budget":{"items":[{"amount":"€5,400.00","description":"Care"}]},"signatures":[{"name":"Jane Doe"}]}` {
 		t.Fatalf("sample %s %s", checked.Sample.Metadata, checked.Sample.Data)
 	}
 	if string(checked.Layout.Options) != `{"cover":true,"toc":false,"page_size":"a4","heading_numbering":true}` || checked.Layout.Typst != nil ||
@@ -169,6 +172,167 @@ func TestDraftTemplateRepairQuotesAPreview(t *testing.T) {
 	ask := fmt.Sprint(m[3]["content"])
 	if !strings.Contains(ask, "metadata_fields[0] (tier): type enum needs at least one choice") || !strings.Contains(ask, "metadata_fields[1] (Bad Name): the name must be") {
 		t.Fatalf("repair problems: %s", ask)
+	}
+}
+
+// TestDraftTemplateRepairsDuplicateComponents: a component declared by two
+// sections is a problem sent back in the repair round, before any check.
+func TestDraftTemplateRepairsDuplicateComponents(t *testing.T) {
+	dup := draftAnswerJSON(func(m map[string]any) {
+		m["sections"] = []any{
+			map[string]any{"title": "Environment", "required": true, "aliases": []string{}, "hint": "", "component": "info"},
+			map[string]any{"title": "Results", "required": true, "aliases": []string{}, "hint": "", "component": "info"},
+			map[string]any{"title": "Fees", "required": true, "aliases": []string{}, "hint": "", "component": "budget"},
+			map[string]any{"title": "Signatures", "required": false, "aliases": []string{}, "hint": "", "component": "signatures"},
+		}
+	})
+	c, s := newScripted(t, dup, draftAnswerJSON(nil))
+	calls := 0
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(context.Context, model.Template) ([]model.Finding, bool, error) {
+		calls++
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || !d.Repaired || calls != 1 || len(s.requests) != 2 {
+		t.Fatalf("draft %+v %v (%d checks, %d requests)", d, err, calls, len(s.requests))
+	}
+	ask := fmt.Sprint(messagesOf(s.requests[1])[3]["content"])
+	if !strings.Contains(ask, `sections: component info is declared by "Environment", "Results"; a component sits in one section`) ||
+		!strings.Contains(ask, "Markdown pipe tables") {
+		t.Fatalf("repair problems: %s", ask)
+	}
+}
+
+// TestSpecFromAnswerMissingSampleData: every data component the template
+// uses needs sample data; the spec stays usable.
+func TestSpecFromAnswerMissingSampleData(t *testing.T) {
+	var a draftAnswer
+	_ = json.Unmarshal([]byte(draftAnswerJSON(func(m map[string]any) {
+		m["components"] = []string{"budget", "signatures", "deliverables"}
+	})), &a)
+	tpl, problems := specFromAnswer(a)
+	got := strings.Join(problems, "\n")
+	if !strings.Contains(got, "sample.data.deliverables is missing: give data for every component the template uses") ||
+		strings.Contains(got, "sample.data.budget") || strings.Contains(got, "sample.data.info") || tpl.ID != "service-agreement" {
+		t.Fatalf("problems %q", got)
+	}
+}
+
+func noDeliverables(m map[string]any) {
+	m["components"] = []string{"budget", "signatures", "deliverables"}
+}
+
+// TestDraftTemplateFillsMissingSampleData: the model left out a component's
+// sample data; one small call asks for exactly that component and its answer
+// is merged, with no repair round.
+func TestDraftTemplateFillsMissingSampleData(t *testing.T) {
+	fill := `{"deliverables":[{"id":"D1","name":"Test report"}]}`
+	c, s := newScripted(t, draftAnswerJSON(noDeliverables), fill)
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || d.Repaired || len(s.requests) != 2 {
+		t.Fatalf("draft %+v %v (%d requests)", d, err, len(s.requests))
+	}
+	name, _, schema := s.schemaOf(t, 1)
+	if name != "sample_data" || !strings.Contains(schema, `"required":["deliverables"]`) || strings.Contains(schema, `"budget"`) || !strings.Contains(schema, `"additionalProperties":false`) {
+		t.Fatalf("fill request %s %s", name, schema)
+	}
+	if !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"id":"D1","name":"Test report"}]`) || !strings.Contains(string(checked.Sample.Data), `"budget"`) {
+		t.Fatalf("sample data %s", checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateFillFallsBackToExamples: a malformed fill answer is not
+// fatal; the built-in example fills the gap.
+func TestDraftTemplateFillFallsBackToExamples(t *testing.T) {
+	c, _ := newScripted(t, draftAnswerJSON(noDeliverables), "{not json")
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || d.Repaired {
+		t.Fatalf("draft %+v %v", d, err)
+	}
+	if !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description":"Scope, schedule and risks.","due":"2026-11-15"`) {
+		t.Fatalf("sample data %s", checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateFillServiceFailureFallsBack: a failed fill call (here a
+// 500) does not fail the draft; the built-in example is used.
+func TestDraftTemplateFillServiceFailureFallsBack(t *testing.T) {
+	first := draftAnswerJSON(noDeliverables)
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls > 1 {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		out, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": first}}}})
+		_, _ = w.Write(out)
+	}))
+	defer srv.Close()
+	c, err := New(Config{APIKey: testKey, BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || d.Repaired || !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description":"Scope, schedule and risks."`) {
+		t.Fatalf("draft %+v %v data %s", d, err, checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateFillRejectsWrongShape: a fill answer of the wrong JSON
+// type is replaced by the built-in example.
+func TestDraftTemplateFillRejectsWrongShape(t *testing.T) {
+	c, _ := newScripted(t, draftAnswerJSON(noDeliverables), `{"deliverables":{}}`)
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description"`) {
+		t.Fatalf("draft %+v %v data %s", d, err, checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateSkipsFillWhenRepairIsComing: with other problems the
+// draft is replaced by the repair round, so no fill call is spent.
+func TestDraftTemplateSkipsFillWhenRepairIsComing(t *testing.T) {
+	dup := draftAnswerJSON(func(m map[string]any) {
+		noDeliverables(m)
+		m["sections"] = []any{
+			map[string]any{"title": "A", "required": false, "aliases": []string{}, "hint": "", "component": "budget"},
+			map[string]any{"title": "B", "required": false, "aliases": []string{}, "hint": "", "component": "budget"},
+		}
+	})
+	c, s := newScripted(t, dup, draftAnswerJSON(nil))
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(context.Context, model.Template) ([]model.Finding, bool, error) {
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || !d.Repaired || len(s.requests) != 2 {
+		t.Fatalf("draft %+v %v (%d requests)", d, err, len(s.requests))
+	}
+}
+
+// TestDraftPromptExplainsComponents: the prompt says a component sits in one
+// section, info is the details box and other tables are pipe tables.
+func TestDraftPromptExplainsComponents(t *testing.T) {
+	for _, want := range []string{"at most one section declares it", "info is the document-details box", "is not a general table", "Markdown pipe table", `component ""`, "EVERY data component"} {
+		if !strings.Contains(draftSystem, want) {
+			t.Errorf("draftSystem lacks %q", want)
+		}
+	}
+	if g := componentGuide(components.Names); !strings.Contains(g, "not a general table") {
+		t.Errorf("componentGuide: %s", g)
 	}
 }
 

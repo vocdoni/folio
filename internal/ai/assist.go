@@ -24,6 +24,9 @@ const (
 	planFillTimeout = 45 * time.Second
 	draftTokens     = 4096
 	draftTimeout    = 60 * time.Second
+
+	sampleDataTokens  = 2048
+	sampleDataTimeout = 30 * time.Second
 )
 
 // RepairPreview bounds the previous answer quoted back to the model in a

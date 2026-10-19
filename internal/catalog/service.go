@@ -150,12 +150,21 @@ func (s *Service) ValidateTemplate(t model.Template) []model.Finding {
 			fs = append(fs, bad(fmt.Sprintf("/components/%d", i), "unknown component "+c))
 		}
 	}
+	declared := map[string]string{} // component -> title of the section declaring it
 	for i, sec := range t.Sections {
 		if strings.TrimSpace(sec.Title) == "" {
 			fs = append(fs, bad(fmt.Sprintf("/sections/%d/title", i), "section title is required"))
 		}
 		if sec.Component != "" && !slices.Contains(t.Components, sec.Component) {
 			fs = append(fs, bad(fmt.Sprintf("/sections/%d/component", i), "component must also be listed in components"))
+		}
+		if sec.Component != "" {
+			if first, dup := declared[sec.Component]; dup {
+				fs = append(fs, bad(fmt.Sprintf("/sections/%d/component", i),
+					fmt.Sprintf("component %s is already declared by section %q; a component sits in one section", sec.Component, first)))
+			} else {
+				declared[sec.Component] = sec.Title
+			}
 		}
 	}
 	for lang, table := range t.Labels {
