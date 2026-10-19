@@ -215,6 +215,50 @@ func TestSpecFromAnswerMissingSampleData(t *testing.T) {
 	}
 }
 
+func noDeliverables(m map[string]any) {
+	m["components"] = []string{"budget", "signatures", "deliverables"}
+}
+
+// TestDraftTemplateFillsMissingSampleData: the model left out a component's
+// sample data; one small call asks for exactly that component and its answer
+// is merged, with no repair round.
+func TestDraftTemplateFillsMissingSampleData(t *testing.T) {
+	fill := `{"deliverables":[{"id":"D1","name":"Test report"}]}`
+	c, s := newScripted(t, draftAnswerJSON(noDeliverables), fill)
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || d.Repaired || len(s.requests) != 2 {
+		t.Fatalf("draft %+v %v (%d requests)", d, err, len(s.requests))
+	}
+	name, _, schema := s.schemaOf(t, 1)
+	if name != "sample_data" || !strings.Contains(schema, `"required":["deliverables"]`) || strings.Contains(schema, `"budget"`) || !strings.Contains(schema, `"additionalProperties":false`) {
+		t.Fatalf("fill request %s %s", name, schema)
+	}
+	if !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"id":"D1","name":"Test report"}]`) || !strings.Contains(string(checked.Sample.Data), `"budget"`) {
+		t.Fatalf("sample data %s", checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateFillFallsBackToExamples: a malformed fill answer is not
+// fatal; the built-in example fills the gap.
+func TestDraftTemplateFillFallsBackToExamples(t *testing.T) {
+	c, _ := newScripted(t, draftAnswerJSON(noDeliverables), "{not json", "{not json")
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || d.Repaired {
+		t.Fatalf("draft %+v %v", d, err)
+	}
+	if !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description":"Scope, schedule and risks.","due":"2026-11-15"`) {
+		t.Fatalf("sample data %s", checked.Sample.Data)
+	}
+}
+
 // TestDraftPromptExplainsComponents: the prompt says a component sits in one
 // section, info is the details box and other tables are pipe tables.
 func TestDraftPromptExplainsComponents(t *testing.T) {
