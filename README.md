@@ -163,6 +163,9 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_MAX_REQUEST_BYTES` | `16MiB` | MCP request body limit |
 | `FOLIO_MAX_PAGES` | `200` | maximum rendered pages |
 | `FOLIO_MAX_TABLE_CELLS` | `10000` | maximum cells per table |
+| `FOLIO_DEFAULT_BRAND` | the only live brand | brand of inline templates that name none (`render_document.template` without `brand_id`); startup warns when it names no live brand |
+| `FOLIO_MAX_INLINE_TEMPLATE_BYTES` | `256KiB` | size limit of an inline template spec (canonical JSON) |
+| `FOLIO_MAX_LAYOUT_TYPST_BYTES` | `64KiB` | size limit of a custom `layout.typst`, inline or stored |
 | `FOLIO_TRASH_RETENTION` | `720h` | trashed documents are purged after this |
 | `FOLIO_PREVIEW_RETENTION` | `24h` | template preview renders expire after this |
 | `FOLIO_PREVIEW_PAGES_STORED` | `3` | preview PNG pages stored per revision (later pages are rendered on demand) |

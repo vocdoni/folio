@@ -3,6 +3,7 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -42,5 +43,26 @@ func TestErrorUnwrapAndRetryable(t *testing.T) {
 	}
 	if !Errorf(ErrBusy, "q").Retryable || Errorf(ErrTimeout, "t").Retryable {
 		t.Fatal("only busy is retryable")
+	}
+}
+
+func TestInlineIDs(t *testing.T) {
+	for id, want := range map[string][2]bool{ // {inline, reserved}
+		"inline-0123456789abcdef": {true, true},
+		"inline-x":                {true, true},
+		"inline":                  {false, true},
+		"inlined":                 {false, false},
+		"proposal":                {false, false},
+	} {
+		if IsInlineID(id) != want[0] || IsReservedTemplateID(id) != want[1] {
+			t.Errorf("%s: inline=%v reserved=%v, want %v", id, IsInlineID(id), IsReservedTemplateID(id), want)
+		}
+	}
+	if r := TemplateRef("inline-0123456789abcdef", 1); !r.Inline || r.Version != 1 {
+		t.Fatalf("inline ref %+v", r)
+	}
+	raw, _ := json.Marshal(TemplateRef("proposal", 2))
+	if string(raw) != `{"id":"proposal","version":2}` {
+		t.Fatalf("stored refs must not carry inline: %s", raw)
 	}
 }

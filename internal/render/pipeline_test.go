@@ -3,6 +3,7 @@
 package render
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -148,5 +149,20 @@ func TestPipelineConcurrencyAndBusy(t *testing.T) {
 	p.cfg.Queue = NewQueue(2, 3)
 	if ok, busy := run(20); busy == 0 || ok+busy != 20 {
 		t.Fatalf("queue 3: ok=%d busy=%d", ok, busy)
+	}
+}
+
+// The inline flag of a template ref is derived from the id: it never changes
+// the canonical input, so dedup sees the same hash with or without it.
+func TestCanonicalInputIgnoresInlineFlag(t *testing.T) {
+	in := model.DocumentInput{Markdown: "# Hi", Metadata: json.RawMessage(`{"title":"T","date":"2026-10-19","language":"en"}`)}
+	b := model.Ref{ID: "example", Version: 1}
+	_, plain, err := CanonicalInput(model.Ref{ID: "inline-0123456789abcdef", Version: 1}, b, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, flagged, err := CanonicalInput(model.TemplateRef("inline-0123456789abcdef", 1), b, in)
+	if err != nil || flagged != plain || bytes.Contains(raw, []byte(`"inline"`)) {
+		t.Fatalf("inline flag changed the canonical input: %s %v", raw, err)
 	}
 }

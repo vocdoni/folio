@@ -112,6 +112,10 @@ type Config struct {
 	AIModel              string
 	AIDailyCalls         int
 	AISessionCalls       int // per session per hour
+	// Inline templates (render_document.template).
+	DefaultBrand           string // FOLIO_DEFAULT_BRAND; "" = the only live brand
+	MaxInlineTemplateBytes int    // FOLIO_MAX_INLINE_TEMPLATE_BYTES: canonical inline spec
+	MaxLayoutTypstBytes    int    // FOLIO_MAX_LAYOUT_TYPST_BYTES: layout.typst of any template
 }
 
 // UIEnabled reports whether the web UI is served (FOLIO_UI_PASSWORD is set).
@@ -205,6 +209,9 @@ func Load(getenv func(string) (string, bool), mode Mode) (*Config, error) {
 	c.PreviewRetention = dur("FOLIO_PREVIEW_RETENTION", 24*time.Hour, false)
 	c.PreviewPagesStored = num("FOLIO_PREVIEW_PAGES_STORED", 3, 0)
 	c.MaxTableCells = num("FOLIO_MAX_TABLE_CELLS", 10000, 1)
+	c.DefaultBrand = str("FOLIO_DEFAULT_BRAND", "")
+	c.MaxInlineTemplateBytes = int(size("FOLIO_MAX_INLINE_TEMPLATE_BYTES", 256<<10))
+	c.MaxLayoutTypstBytes = int(size("FOLIO_MAX_LAYOUT_TYPST_BYTES", 64<<10))
 	c.BlobGCGrace = dur("FOLIO_BLOB_GC_GRACE", time.Hour, false)
 	c.BackupInterval = dur("FOLIO_BACKUP_INTERVAL", 24*time.Hour, true)
 	c.BackupKeep = num("FOLIO_BACKUP_KEEP", 7, 1)

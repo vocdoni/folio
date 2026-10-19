@@ -8,6 +8,7 @@ package model
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 )
 
 // SpecVersion is the implicit version of stored brand/template spec JSON.
@@ -15,6 +16,24 @@ const SpecVersion = 1
 
 // SlugRE validates brand and template IDs.
 var SlugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
+
+// InlinePrefix starts every inline template id ("inline-" plus 16 lowercase
+// hex characters of the spec hash). The prefix is the only marker of an
+// inline template: every reader derives "inline" from it.
+const InlinePrefix = "inline-"
+
+// IsInlineID reports whether id names an inline template.
+func IsInlineID(id string) bool { return strings.HasPrefix(id, InlinePrefix) }
+
+// IsReservedTemplateID reports whether id is reserved for inline templates
+// ("inline" and every id starting with "inline-"); stored templates never
+// use one.
+func IsReservedTemplateID(id string) bool { return id == "inline" || IsInlineID(id) }
+
+// TemplateRef is the ref of template id@version, flagged inline when id is.
+func TemplateRef(id string, version int) Ref {
+	return Ref{ID: id, Version: version, Inline: IsInlineID(id)}
+}
 
 // Brand is one immutable brand version.
 type Brand struct {
@@ -129,8 +148,10 @@ type DocumentInput struct {
 	Formats  []Format        `json:"formats,omitempty"` // default pdf+docx
 }
 
-// Ref is a resolved id@version.
+// Ref is a resolved id@version. Inline is set on template refs whose id is
+// an inline template id; it is derived from the id and never hashed.
 type Ref struct {
 	ID      string `json:"id"`
 	Version int    `json:"version"`
+	Inline  bool   `json:"inline,omitempty"`
 }

@@ -40,6 +40,13 @@ type Service struct {
 	Now             func() time.Time
 	PreviewTTL      time.Duration // FOLIO_PREVIEW_RETENTION
 	PreviewPagesMax int           // FOLIO_PREVIEW_PAGES_STORED
+	// DefaultBrandID is FOLIO_DEFAULT_BRAND: the brand of inline templates
+	// that name none ("" = the only live brand).
+	DefaultBrandID string
+	// MaxLayoutTypstBytes bounds layout.typst of every template and
+	// MaxInlineBytes the canonical spec of an inline template (0 = no limit).
+	MaxLayoutTypstBytes int
+	MaxInlineBytes      int
 }
 
 // File is a stored output row (also used by documents).
@@ -214,14 +221,31 @@ func (s *Service) CreateTemplate(ctx context.Context, actor string, t model.Temp
 
 // UpdateTemplate is CreateTemplate for latest+1 with expected_version.
 func (s *Service) UpdateTemplate(ctx context.Context, actor, id string, expectedVersion int, t model.Template, note string) (*TemplateResult, error) {
+	if model.IsInlineID(id) {
+		return nil, notFound(KindTemplate, id)
+	}
 	if t.ID != id {
 		return nil, &model.Error{Code: model.ErrInvalidInput, Message: "template.id must equal id"}
 	}
 	return s.putTemplate(ctx, actor, t, note, false, expectedVersion)
 }
 
-// checkTemplate validates the spec structurally and resolves its brand.
+// typstLimit fails with too_large when layout.typst exceeds
+// MaxLayoutTypstBytes; path prefixes the field name in the message.
+func (s *Service) typstLimit(t model.Template, path string) error {
+	if s.MaxLayoutTypstBytes > 0 && t.Layout.Typst != nil && len(*t.Layout.Typst) > s.MaxLayoutTypstBytes {
+		return &model.Error{Code: model.ErrTooLarge, Message: fmt.Sprintf("%s/layout/typst is %d bytes; the limit is %d (get_capabilities.limits.max_layout_typst_bytes)",
+			path, len(*t.Layout.Typst), s.MaxLayoutTypstBytes)}
+	}
+	return nil
+}
+
+// checkTemplate checks the layout.typst size, validates the spec
+// structurally and resolves its brand.
 func (s *Service) checkTemplate(ctx context.Context, t model.Template) (model.Brand, int, error) {
+	if err := s.typstLimit(t, ""); err != nil {
+		return model.Brand{}, 0, err
+	}
 	if fs := s.ValidateTemplate(t); model.HasErrors(fs) {
 		return model.Brand{}, 0, &model.Error{Code: model.ErrValidationFailed, Message: "the template is invalid; see details", Details: fs}
 	}
@@ -264,6 +288,9 @@ func (s *Service) DryRunTemplate(ctx context.Context, t model.Template, formats 
 }
 
 func (s *Service) putTemplate(ctx context.Context, actor string, t model.Template, note string, create bool, expected int) (*TemplateResult, error) {
+	if model.IsReservedTemplateID(t.ID) {
+		return nil, reserved(t.ID)
+	}
 	brand, brandVersion, err := s.checkTemplate(ctx, t)
 	if err != nil {
 		return nil, err
@@ -305,6 +332,9 @@ func (s *Service) renderSample(ctx context.Context, t model.Template, version in
 
 // PreviewTemplate renders the sample of id@version (0 = latest); files expire after PreviewTTL.
 func (s *Service) PreviewTemplate(ctx context.Context, id string, version int) (*TemplateResult, error) {
+	if model.IsInlineID(id) { // inline templates have no sample and no preview files
+		return nil, notFound(KindTemplate, id)
+	}
 	t, v, err := s.ResolveTemplate(ctx, id, version, true)
 	if err != nil {
 		return nil, err
@@ -411,6 +441,50 @@ func (s *Service) ResolveTemplate(ctx context.Context, id string, version int, a
 		return model.Template{}, 0, fmt.Errorf("catalog: decode template: %w", err)
 	}
 	return t, it.Version, nil
+}
+
+// DefaultBrand returns the brand an inline template uses when neither its
+// spec nor the call names one: DefaultBrandID when it names a live brand,
+// else the only live brand. Otherwise it fails with invalid_input naming
+// the configured brand or the live brands to choose from.
+func (s *Service) DefaultBrand(ctx context.Context) (string, error) {
+	if s.DefaultBrandID != "" {
+		_, _, err := s.ResolveBrand(ctx, s.DefaultBrandID, 0)
+		var me *model.Error
+		if errors.As(err, &me) && (me.Code == model.ErrNotFound || me.Code == model.ErrArchived) {
+			return "", &model.Error{Code: model.ErrInvalidInput, Message: fmt.Sprintf(
+				"the default brand %q (FOLIO_DEFAULT_BRAND) does not exist or is archived; pass brand_id or ask the operator to fix FOLIO_DEFAULT_BRAND", s.DefaultBrandID)}
+		}
+		if err != nil {
+			return "", err
+		}
+		return s.DefaultBrandID, nil
+	}
+	rows, err := s.DB.R.QueryContext(ctx, `SELECT id FROM brand_heads WHERE archived_at IS NULL ORDER BY id LIMIT 21`)
+	if err != nil {
+		return "", fmt.Errorf("catalog: live brands: %w", err)
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return "", fmt.Errorf("catalog: scan brand: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	switch {
+	case len(ids) == 1:
+		return ids[0], nil
+	case len(ids) == 0:
+		return "", &model.Error{Code: model.ErrInvalidInput, Message: "there is no live brand: create one with create_brand and pass brand_id"}
+	case len(ids) > 20:
+		ids = append(ids[:20], "…")
+	}
+	return "", &model.Error{Code: model.ErrInvalidInput, Message: fmt.Sprintf("pass brand_id (available brands: %s)", strings.Join(ids, ", "))}
 }
 
 // GetBrand / GetTemplate return the stored item with history.

@@ -134,3 +134,24 @@ func TestWebUIVariables(t *testing.T) {
 		t.Fatalf("none: %v %v", c.TrustedProxies, err)
 	}
 }
+
+func TestInlineTemplateSettings(t *testing.T) {
+	c, err := Load(env(nil), ModeRender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DefaultBrand != "" || c.MaxInlineTemplateBytes != 256<<10 || c.MaxLayoutTypstBytes != 64<<10 {
+		t.Fatalf("defaults: %q %d %d", c.DefaultBrand, c.MaxInlineTemplateBytes, c.MaxLayoutTypstBytes)
+	}
+	c, err = Load(env(map[string]string{"FOLIO_DEFAULT_BRAND": " acme ", "FOLIO_MAX_INLINE_TEMPLATE_BYTES": "1MiB",
+		"FOLIO_MAX_LAYOUT_TYPST_BYTES": "4096"}), ModeRender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DefaultBrand != "acme" || c.MaxInlineTemplateBytes != 1<<20 || c.MaxLayoutTypstBytes != 4096 {
+		t.Fatalf("overrides: %q %d %d", c.DefaultBrand, c.MaxInlineTemplateBytes, c.MaxLayoutTypstBytes)
+	}
+	if _, err := Load(env(map[string]string{"FOLIO_MAX_LAYOUT_TYPST_BYTES": "64KB"}), ModeRender); err == nil || !strings.Contains(err.Error(), "FOLIO_MAX_LAYOUT_TYPST_BYTES") {
+		t.Fatalf("bad size accepted: %v", err)
+	}
+}
