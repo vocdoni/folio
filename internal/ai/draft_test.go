@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -245,7 +247,7 @@ func TestDraftTemplateFillsMissingSampleData(t *testing.T) {
 // TestDraftTemplateFillFallsBackToExamples: a malformed fill answer is not
 // fatal; the built-in example fills the gap.
 func TestDraftTemplateFillFallsBackToExamples(t *testing.T) {
-	c, _ := newScripted(t, draftAnswerJSON(noDeliverables), "{not json", "{not json")
+	c, _ := newScripted(t, draftAnswerJSON(noDeliverables), "{not json")
 	var checked model.Template
 	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
 		checked = tpl
@@ -256,6 +258,68 @@ func TestDraftTemplateFillFallsBackToExamples(t *testing.T) {
 	}
 	if !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description":"Scope, schedule and risks.","due":"2026-11-15"`) {
 		t.Fatalf("sample data %s", checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateFillServiceFailureFallsBack: a failed fill call (here a
+// 500) does not fail the draft; the built-in example is used.
+func TestDraftTemplateFillServiceFailureFallsBack(t *testing.T) {
+	first := draftAnswerJSON(noDeliverables)
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls > 1 {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		out, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": first}}}})
+		_, _ = w.Write(out)
+	}))
+	defer srv.Close()
+	c, err := New(Config{APIKey: testKey, BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || d.Repaired || !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description":"Scope, schedule and risks."`) {
+		t.Fatalf("draft %+v %v data %s", d, err, checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateFillRejectsWrongShape: a fill answer of the wrong JSON
+// type is replaced by the built-in example.
+func TestDraftTemplateFillRejectsWrongShape(t *testing.T) {
+	c, _ := newScripted(t, draftAnswerJSON(noDeliverables), `{"deliverables":{}}`)
+	var checked model.Template
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(_ context.Context, tpl model.Template) ([]model.Finding, bool, error) {
+		checked = tpl
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || !strings.Contains(string(checked.Sample.Data), `"deliverables":[{"description"`) {
+		t.Fatalf("draft %+v %v data %s", d, err, checked.Sample.Data)
+	}
+}
+
+// TestDraftTemplateSkipsFillWhenRepairIsComing: with other problems the
+// draft is replaced by the repair round, so no fill call is spent.
+func TestDraftTemplateSkipsFillWhenRepairIsComing(t *testing.T) {
+	dup := draftAnswerJSON(func(m map[string]any) {
+		noDeliverables(m)
+		m["sections"] = []any{
+			map[string]any{"title": "A", "required": false, "aliases": []string{}, "hint": "", "component": "budget"},
+			map[string]any{"title": "B", "required": false, "aliases": []string{}, "hint": "", "component": "budget"},
+		}
+	})
+	c, s := newScripted(t, dup, draftAnswerJSON(nil))
+	d, err := c.DraftTemplate(context.Background(), draftIn, func(context.Context, model.Template) ([]model.Finding, bool, error) {
+		return nil, true, nil
+	}, func(string) {})
+	if err != nil || !d.OK || !d.Repaired || len(s.requests) != 2 {
+		t.Fatalf("draft %+v %v (%d requests)", d, err, len(s.requests))
 	}
 }
 
