@@ -234,7 +234,12 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		Limits: LimitsOut{MaxMarkdownBytes: c.MaxMarkdownBytes, MaxAssetBytes: c.MaxAssetBytes, MaxRequestBytes: c.MaxRequestBytes,
 			MaxPages: c.MaxPages, PreviewPagesStored: c.PreviewPagesStored, TrashRetentionDays: int(c.TrashRetention.Hours() / 24),
 			MaxInlineTemplateBytes: c.MaxInlineTemplateBytes, MaxLayoutTypstBytes: c.MaxLayoutTypstBytes}}
-	out.DefaultBrand, _ = s.o.Catalog.DefaultBrand(r.Context()) // "" when there is none
+	if id, err := s.o.Catalog.DefaultBrand(r.Context()); err == nil {
+		out.DefaultBrand = id
+	} else if !errors.As(err, new(*model.Error)) {
+		writeError(w, r, err)
+		return
+	}
 	for _, b := range bases {
 		out.Layouts = append(out.Layouts, LayoutOut{Name: b, OptionsSchema: json.RawMessage(catalog.OptionsSchema)})
 	}

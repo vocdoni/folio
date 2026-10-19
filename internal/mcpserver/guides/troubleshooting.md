@@ -104,7 +104,8 @@ except `placeholder`, so fix layouts until the sample renders cleanly.
   `idempotency_key` for new documents.
 - **`pass brand_id (available brands: …)`.** An inline template names no
   brand and the instance has no default (several live brands and no
-  `FOLIO_DEFAULT_BRAND`): pass `brand_id`.
+  `FOLIO_DEFAULT_BRAND`): pass `brand_id` (in `validate_document`, set
+  `template.brand_id`: the call has no `brand_id`).
 - **`not_found` from `update_template` on an `inline-…` id.** Inline
   templates are immutable: render with a changed `template` (it gets a new
   id), or `save_inline_template` and update the saved template.

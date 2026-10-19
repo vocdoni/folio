@@ -71,7 +71,8 @@ reused or curated.
   `save_inline_template(document_id, id, name)` creates a regular template
   from it with the document's latest input as its sample.
 - `validate_document` takes the same `template`; problems with the spec come
-  back with paths under `/template` (for example `/template/layout/base`).
+  back with paths under `/template` (for example `/template/layout/base`); it has no `brand_id`, so name the
+  brand in `template.brand_id` when the instance has no default brand.
 - Limits: `get_capabilities.limits.max_inline_template_bytes` for the spec
   and `max_layout_typst_bytes` for `layout.typst` (`too_large` otherwise).
 

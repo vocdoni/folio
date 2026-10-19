@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -55,7 +56,7 @@ type LimitsOut struct {
 	MaxImagesPerCall       int   `json:"max_images_per_call"`
 	MaxListLimit           int   `json:"max_list_limit"`
 	IdempotencyWindowHours int   `json:"idempotency_window_hours"`
-	MaxInlineTemplateBytes int   `json:"max_inline_template_bytes" jsonschema:"canonical JSON size limit of render_document.template"`
+	MaxInlineTemplateBytes int   `json:"max_inline_template_bytes" jsonschema:"canonical JSON size limit of render_document.template (measured before the brand and id are filled in)"`
 	MaxLayoutTypstBytes    int   `json:"max_layout_typst_bytes" jsonschema:"size limit of layout.typst (inline and stored templates)"`
 }
 
@@ -100,7 +101,11 @@ func (d *Deps) capabilities(ctx context.Context) (*CapabilitiesOut, error) {
 		PreviewRetentionHours: int(c.PreviewRetention.Hours()), TrashRetentionHours: int(c.TrashRetention.Hours()),
 		MaxImagesPerCall: MaxImages, MaxListLimit: 200, IdempotencyWindowHours: 24,
 		MaxInlineTemplateBytes: c.MaxInlineTemplateBytes, MaxLayoutTypstBytes: c.MaxLayoutTypstBytes}
-	out.DefaultBrand, _ = d.Catalog.DefaultBrand(ctx) // "" when there is none
+	if id, err := d.Catalog.DefaultBrand(ctx); err == nil {
+		out.DefaultBrand = id
+	} else if !errors.As(err, new(*model.Error)) {
+		return nil, err // a real failure, not "no default brand"
+	}
 	return out, nil
 }
 
