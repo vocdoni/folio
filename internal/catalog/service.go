@@ -216,7 +216,7 @@ func (s *Service) putBrand(ctx context.Context, actor string, b model.Brand, not
 // CreateTemplate validates, renders the sample (any error, or any warning
 // other than placeholder findings, fails) and stores version 1 with preview files.
 func (s *Service) CreateTemplate(ctx context.Context, actor string, t model.Template, note string) (*TemplateResult, error) {
-	return s.putTemplate(ctx, actor, t, note, true, 0)
+	return s.putTemplate(ctx, actor, t, note, true, 0, false)
 }
 
 // UpdateTemplate is CreateTemplate for latest+1 with expected_version.
@@ -227,7 +227,7 @@ func (s *Service) UpdateTemplate(ctx context.Context, actor, id string, expected
 	if t.ID != id {
 		return nil, &model.Error{Code: model.ErrInvalidInput, Message: "template.id must equal id"}
 	}
-	return s.putTemplate(ctx, actor, t, note, false, expectedVersion)
+	return s.putTemplate(ctx, actor, t, note, false, expectedVersion, false)
 }
 
 // typstLimit fails with too_large when layout.typst exceeds
@@ -254,15 +254,15 @@ func (s *Service) checkTemplate(ctx context.Context, t model.Template) (model.Br
 
 // sampleRender renders the sample with formats (nil = pdf and docx) and
 // applies create_template's policy: any warning other than a placeholder
-// fails the render.
-func (s *Service) sampleRender(ctx context.Context, t model.Template, b model.Brand, bv int, formats []model.Format) (*render.Result, error) {
+// fails the render, unless anyWarning (save_inline_template) accepts them all.
+func (s *Service) sampleRender(ctx context.Context, t model.Template, b model.Brand, bv int, formats []model.Format, anyWarning bool) (*render.Result, error) {
 	res, err := s.Renderer.Render(ctx, render.Request{Template: t, Brand: b, BrandVersion: bv,
 		Input: model.DocumentInput{Markdown: t.Sample.Markdown, Metadata: t.Sample.Metadata, Data: t.Sample.Data, Formats: formats}})
 	if err != nil {
 		return nil, err
 	}
 	for _, w := range res.Warnings {
-		if w.Code != model.CodePlaceholder {
+		if !anyWarning && w.Code != model.CodePlaceholder {
 			return res, &model.Error{Code: model.ErrValidationFailed, Details: res.Warnings,
 				Message: "rendering the sample produced warnings; fix the sample or the layout"}
 		}
@@ -280,14 +280,14 @@ func (s *Service) DryRunTemplate(ctx context.Context, t model.Template, formats 
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := s.sampleRender(ctx, t, brand, brandVersion, formats)
+	res, err := s.sampleRender(ctx, t, brand, brandVersion, formats, false)
 	if err != nil {
 		return nil, nil, err
 	}
 	return res.Warnings, res, nil
 }
 
-func (s *Service) putTemplate(ctx context.Context, actor string, t model.Template, note string, create bool, expected int) (*TemplateResult, error) {
+func (s *Service) putTemplate(ctx context.Context, actor string, t model.Template, note string, create bool, expected int, anyWarning bool) (*TemplateResult, error) {
 	if model.IsReservedTemplateID(t.ID) {
 		return nil, reserved(t.ID)
 	}
@@ -304,7 +304,7 @@ func (s *Service) putTemplate(ctx context.Context, actor string, t model.Templat
 			return nil, conflict(KindTemplate, t.ID, cur.LatestVersion)
 		}
 	}
-	res, err := s.sampleRender(ctx, t, brand, brandVersion, nil)
+	res, err := s.sampleRender(ctx, t, brand, brandVersion, nil, anyWarning)
 	if err != nil {
 		return nil, err
 	}
