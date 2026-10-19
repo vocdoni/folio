@@ -20,8 +20,9 @@ import (
 )
 
 type ValidateIn struct {
-	TemplateID      string          `json:"template_id"`
-	TemplateVersion int             `json:"template_version,omitempty" jsonschema:"omit for the latest version"`
+	TemplateID      string          `json:"template_id,omitempty" jsonschema:"a stored template id or an inline-… id; omit when you pass template"`
+	Template        *model.Template `json:"template,omitempty" jsonschema:"inline template spec instead of template_id, as in render_document"`
+	TemplateVersion int             `json:"template_version,omitempty" jsonschema:"omit for the latest version; not with template"`
 	Markdown        string          `json:"markdown" jsonschema:"document body in Folio Markdown (get_guide markdown); start from the template's body_skeleton"`
 	Metadata        json.RawMessage `json:"metadata" jsonschema:"title, date (YYYY-MM-DD), language plus the template's metadata_schema fields"`
 	Data            json.RawMessage `json:"data,omitempty" jsonschema:"component data, e.g. {\"budget\": {\"items\": [...], \"totals\": [...]}}; every displayed value is a string, printed exactly as sent"`
@@ -35,9 +36,10 @@ type ValidateOut struct {
 }
 
 type RenderIn struct {
-	TemplateID       string          `json:"template_id,omitempty" jsonschema:"required for a new document; defaults to the document's template for revisions"`
-	TemplateVersion  int             `json:"template_version,omitempty" jsonschema:"omit for the latest version"`
-	BrandID          string          `json:"brand_id,omitempty" jsonschema:"omit to use the template's brand"`
+	TemplateID       string          `json:"template_id,omitempty" jsonschema:"a stored template id or an inline-… id from an earlier render; a new document needs template_id or template; revisions default to the document's current template"`
+	Template         *model.Template `json:"template,omitempty" jsonschema:"inline template spec: the create_template shape with every field optional ({} = default brand, report layout, every component); never listed by list_templates; exclusive with template_id"`
+	TemplateVersion  int             `json:"template_version,omitempty" jsonschema:"omit for the latest version; not with template"`
+	BrandID          string          `json:"brand_id,omitempty" jsonschema:"omit to use the template's brand; for a new inline template it is the template's brand (default: get_capabilities.default_brand)"`
 	Markdown         string          `json:"markdown"`
 	Metadata         json.RawMessage `json:"metadata"`
 	Data             json.RawMessage `json:"data,omitempty"`
@@ -63,6 +65,7 @@ type RenderOut struct {
 type ListDocumentsIn struct {
 	Query          string `json:"query,omitempty" jsonschema:"case-insensitive substring of title or client"`
 	TemplateID     string `json:"template_id,omitempty"`
+	Inline         bool   `json:"inline,omitempty" jsonschema:"true lists only documents whose current template is an inline template (not with template_id)"`
 	Status         string `json:"status,omitempty" jsonschema:"draft, published or trashed"`
 	Client         string `json:"client,omitempty" jsonschema:"exact client name"`
 	CreatedBy      string `json:"created_by,omitempty" jsonschema:"token name of the author"`
@@ -112,6 +115,7 @@ type DocumentOut struct {
 	ID                string            `json:"id"`
 	Title             string            `json:"title"`
 	TemplateID        string            `json:"template_id"`
+	TemplateInline    bool              `json:"template_inline" jsonschema:"the current template is an inline template (get_template reads it)"`
 	Client            string            `json:"client"`
 	Status            string            `json:"status"`
 	LatestRevision    int               `json:"latest_revision"`
@@ -160,11 +164,11 @@ type DeleteDocumentOut struct {
 }
 
 const (
-	descValidate = `Dry-run a document against a template without rendering files: checks metadata and data against the template schemas, the Markdown dialect, required sections, components, images and placeholders. Folio never changes content or figures: every value in data is printed exactly as sent. Returns valid and findings (errors and warnings with JSON pointer path and hint). Call it before render_document and fix every error; warnings (e.g. placeholders) do not block rendering unless the template is strict.`
+	descValidate = `Dry-run a document against a template without rendering files: checks metadata and data against the template schemas, the Markdown dialect, required sections, components, images and placeholders. Folio never changes content or figures: every value in data is printed exactly as sent. Pass template_id (a stored template or an inline-… id) or template (an inline template spec, as in render_document; its problems come back as findings under /template). Returns valid and findings (errors and warnings with JSON pointer path and hint). Call it before render_document and fix every error; warnings (e.g. placeholders) do not block rendering unless the template is strict.`
 
-	descRender = `Render a document to PDF and DOCX (formats) and store it as a revision. New document: template_id, markdown, metadata, data; pass an idempotency_key whenever you might retry, so a retry returns the first document (unchanged=true) instead of a duplicate. New revision of an existing document: document_id plus expected_revision = its latest revision (get_document); a stale value fails with conflict. Identical input returns the existing revision with unchanged=true. Returns download links (public capabilities; share only with intended readers), preview images (include_previews) and warnings. Errors: validation_failed (fix details and retry), archived, busy (retry in a few seconds), timeout (simplify the document). Long renders send progress notifications.`
+	descRender = `Render a document to PDF and DOCX (formats) and store it as a revision. New document: template_id (or template, below), markdown, metadata, data; pass an idempotency_key whenever you might retry, so a retry returns the first document (unchanged=true) instead of a duplicate. New revision of an existing document: document_id plus expected_revision = its latest revision (get_document); a stale value fails with conflict. Identical input returns the existing revision with unchanged=true. Returns download links (public capabilities; share only with intended readers), preview images (include_previews) and warnings. Inline templates: for a one-off document pass template, the create_template spec with every field optional ({} renders with get_capabilities.default_brand and the report layout); the result's template ref is {id: "inline-…", version: 1, inline: true}. Reuse it with template_id: "inline-…", revise without template to keep it, or keep it for good with save_inline_template; inline templates never appear in list_templates. Errors: validation_failed (fix details and retry; inline spec problems have paths under /template), too_large (inline spec or layout.typst over get_capabilities.limits), archived, busy (retry in a few seconds), timeout (simplify the document). Long renders send progress notifications.`
 
-	descListDocuments = `List documents, newest first, with status (draft, published, trashed), latest and published revision, template, client and author. Trashed documents are hidden unless include_trashed=true or status=trashed. Use get_document for files and details.`
+	descListDocuments = `List documents, newest first, with status (draft, published, trashed), latest and published revision, template (template_inline=true for an inline template), client and author. Trashed documents are hidden unless include_trashed=true or status=trashed; inline=true lists only documents rendered with an inline template. Use get_document for files and details.`
 
 	descGetDocument = `Get a document: metadata, every revision (newest first), and the requested revision in full (files with download links, preview links, warnings, advisory review). include_source=true returns the stored input, which is what you edit to revise the document with render_document(document_id, expected_revision). Page images: include_previews (none, first, all) or explicit pages (at most 6).`
 
@@ -199,7 +203,7 @@ func (c *call) renderOut(ctx context.Context, r *documents.RenderResult, mode st
 func (c *call) documentOut(ctx context.Context, d *documents.Document, in GetDocumentIn) (*DocumentOut, error) {
 	r := d.Revision
 	files, previews, pages := c.outputs(r.Files)
-	out := &DocumentOut{ID: d.ID, Title: d.Title, TemplateID: d.TemplateID, Client: d.Client, Status: d.Status,
+	out := &DocumentOut{ID: d.ID, Title: d.Title, TemplateID: d.TemplateID, TemplateInline: d.TemplateInline, Client: d.Client, Status: d.Status,
 		LatestRevision: d.LatestRevision, PublishedRevision: d.PublishedRevision, CreatedBy: d.CreatedBy, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 		Revision: RevisionOut{Revision: r.Revision, Parent: r.Parent, Template: r.Template, Brand: r.Brand, Pages: pages,
 			Files: files, Previews: previews, Warnings: r.Warnings, Review: r.Review, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt},
@@ -240,6 +244,24 @@ func (c *call) documentOut(ctx context.Context, d *documents.Document, in GetDoc
 		return nil, err
 	}
 	return out, c.attachPreviews(ctx, r.Files, mode, pages)
+}
+
+// validateTemplate resolves validate_document's template: template_id
+// (stored or inline) or the inline spec in template (normalised and checked
+// like render_document's; never stored).
+func (d *Deps) validateTemplate(ctx context.Context, in ValidateIn) (model.Template, int, error) {
+	switch {
+	case in.Template != nil && in.TemplateID != "":
+		return model.Template{}, 0, invalid("pass template_id or template (an inline template), not both")
+	case in.Template != nil && in.TemplateVersion != 0:
+		return model.Template{}, 0, invalid("template_version does not apply to an inline template (template)")
+	case in.Template != nil:
+		t, _, err := d.Catalog.InlineTemplate(ctx, *in.Template, "", in.Metadata)
+		return t, 1, err
+	case in.TemplateID == "":
+		return model.Template{}, 0, invalid("template_id or template (an inline template) is required")
+	}
+	return d.Catalog.ResolveTemplate(ctx, in.TemplateID, in.TemplateVersion, false)
 }
 
 func formatsOf(fs []string) ([]model.Format, error) {
@@ -343,9 +365,20 @@ func (d *Deps) review(ctx context.Context, c *call, in ReviewIn) (*ReviewOut, er
 func registerDocumentTools(s *mcp.Server, d *Deps) {
 	register(s, d, tool[ValidateIn, ValidateOut]{Name: "validate_document", Title: "Validate a document (dry run)", Description: descValidate, Access: readOnly,
 		Target: func(in ValidateIn) (string, string) { return "template", in.TemplateID },
-		Record: func(_ ValidateIn, out *ValidateOut) (string, activity.Detail) { return "", findingCounts(out.Findings) },
+		Record: func(_ ValidateIn, out *ValidateOut) (string, activity.Detail) {
+			id := "" // keep Target's, except for an inline template (computed, not stored)
+			if out.Template.Inline {
+				id = out.Template.ID
+			}
+			return id, findingCounts(out.Findings)
+		},
 		Handle: func(ctx context.Context, c *call, in ValidateIn) (*ValidateOut, error) {
-			t, tv, err := d.Catalog.ResolveTemplate(ctx, in.TemplateID, in.TemplateVersion, false)
+			t, tv, err := d.validateTemplate(ctx, in)
+			var me *model.Error
+			if in.Template != nil && errors.As(err, &me) && me.Code == model.ErrValidationFailed {
+				c.Summary("invalid inline template: %d finding(s) under /template; fix them before render_document", len(me.Details))
+				return &ValidateOut{Findings: me.Details}, nil
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -353,10 +386,9 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, err
 			}
-			out := &ValidateOut{Template: model.Ref{ID: t.ID, Version: tv}, Brand: model.Ref{ID: b.ID, Version: bv}}
+			out := &ValidateOut{Template: model.TemplateRef(t.ID, tv), Brand: model.Ref{ID: b.ID, Version: bv}}
 			res, err := d.Validator.Render(ctx, render.Request{Template: t, TemplateVersion: tv, Brand: b, BrandVersion: bv, ValidateOnly: true,
 				Input: model.DocumentInput{Markdown: in.Markdown, Metadata: in.Metadata, Data: in.Data}})
-			var me *model.Error
 			if errors.As(err, &me) && me.Code == model.ErrValidationFailed {
 				out.Findings = me.Details
 				if note := documents.PinnedVersionNote(ctx, d.Catalog, t.ID, in.TemplateVersion); note != "" {
@@ -382,6 +414,9 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 		Record: func(_ RenderIn, out *RenderOut) (string, activity.Detail) {
 			dt := findingCounts(out.Warnings)
 			dt.Revision, dt.Unchanged = out.Revision, out.Unchanged
+			if out.Template.Inline {
+				dt.TemplateID = out.Template.ID
+			}
 			for _, f := range out.Files {
 				dt.Formats = append(dt.Formats, f.Kind)
 				if f.Kind == "pdf" {
@@ -399,12 +434,12 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, err
 			}
-			if in.TemplateID == "" && in.DocumentID == "" {
-				return nil, invalid("template_id is required for a new document (or pass document_id and expected_revision to revise one)")
+			if in.TemplateID == "" && in.Template == nil && in.DocumentID == "" {
+				return nil, invalid("template_id or template (an inline template) is required for a new document (or pass document_id and expected_revision to revise one)")
 			}
 			p := c.startProgress(ctx)
 			defer p.Stop()
-			r, err := d.Documents.Render(p.Context(ctx), c.Actor, documents.RenderRequest{TemplateID: in.TemplateID, TemplateVersion: in.TemplateVersion,
+			r, err := d.Documents.Render(p.Context(ctx), c.Actor, documents.RenderRequest{TemplateID: in.TemplateID, Template: in.Template, TemplateVersion: in.TemplateVersion,
 				BrandID: in.BrandID, DocumentID: in.DocumentID, ExpectedRevision: in.ExpectedRevision, IdempotencyKey: in.IdempotencyKey,
 				Input: model.DocumentInput{Markdown: in.Markdown, Metadata: in.Metadata, Data: in.Data, Formats: formats}})
 			if err != nil {
@@ -427,7 +462,7 @@ func registerDocumentTools(s *mcp.Server, d *Deps) {
 			if in.Status != "" && in.Status != "draft" && in.Status != "published" && in.Status != "trashed" {
 				return nil, invalid("status must be draft, published or trashed")
 			}
-			list, next, err := d.Documents.List(ctx, documents.ListFilter{Query: in.Query, TemplateID: in.TemplateID, Status: in.Status,
+			list, next, err := d.Documents.List(ctx, documents.ListFilter{Query: in.Query, TemplateID: in.TemplateID, Inline: in.Inline, Status: in.Status,
 				Client: in.Client, CreatedBy: in.CreatedBy, IncludeTrashed: in.IncludeTrashed, Limit: limit, Cursor: in.Cursor})
 			if err != nil {
 				return nil, err

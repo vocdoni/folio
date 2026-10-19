@@ -56,7 +56,7 @@ func registerResources(s *mcp.Server, d *Deps) {
 		Description: "Authoring guide by topic (same text as get_guide).", MIMEType: "text/markdown"}, readGuide)
 
 	s.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: templateURIPrefix + "{id}", Name: "template", Title: "Folio template",
-		Description: "Latest version of a template as JSON (same as get_template).", MIMEType: "application/json"},
+		Description: "Latest version of a template, stored or inline, as JSON (same as get_template).", MIMEType: "application/json"},
 		func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			uri := req.Params.URI
 			id := strings.TrimPrefix(uri, templateURIPrefix)
@@ -67,7 +67,7 @@ func registerResources(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, d.resourceError(ctx, uri, err)
 			}
-			return jsonResource(uri, GetTemplateOut{Template: it.Spec, Version: it.Version, LatestVersion: it.LatestVersion, Archived: it.Archived, Versions: it.Versions})
+			return jsonResource(uri, getTemplateOut(it))
 		})
 
 	s.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: documentURIPrefix + "{id}", Name: "document", Title: "Folio document",
