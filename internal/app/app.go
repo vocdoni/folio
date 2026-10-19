@@ -126,6 +126,19 @@ func logMemoryBudget(log *slog.Logger, cfg *config.Config, read func(string) ([]
 	log.Info("render memory budget", attrs...)
 }
 
+// logDefaultBrand warns at startup when FOLIO_DEFAULT_BRAND is set but does
+// not name a live brand: inline templates that name no brand fail until it
+// does (renders report the same problem as invalid_input).
+func logDefaultBrand(ctx context.Context, log *slog.Logger, cat *catalog.Service) {
+	if cat.DefaultBrandID == "" {
+		return
+	}
+	if _, err := cat.DefaultBrand(ctx); err != nil {
+		log.Warn("FOLIO_DEFAULT_BRAND does not name a live brand; inline templates without brand_id fail until it does",
+			"default_brand", cat.DefaultBrandID, "err", err)
+	}
+}
+
 // selfTest proves the tools work under the sandbox before serving: pandoc
 // --sandbox must write a DOCX (only the official static pandoc build can) and
 // typst must rasterise an SVG.
@@ -240,7 +253,8 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 		Limits:   validate.Limits{MaxMarkdownBytes: cfg.MaxMarkdownBytes, MaxNesting: cfg.MaxNesting, MaxTableCells: cfg.MaxTableCells},
 		MaxPages: cfg.MaxPages})
 	cat := &catalog.Service{DB: db, Blobs: blobs, Renderer: pipeline, Assets: as, PackagesDir: rt.PackagesDir, Now: o.Now,
-		PreviewTTL: cfg.PreviewRetention, PreviewPagesMax: cfg.PreviewPagesStored}
+		PreviewTTL: cfg.PreviewRetention, PreviewPagesMax: cfg.PreviewPagesStored, DefaultBrandID: cfg.DefaultBrand,
+		MaxLayoutTypstBytes: cfg.MaxLayoutTypstBytes, MaxInlineBytes: cfg.MaxInlineTemplateBytes}
 	previewCat := *cat
 	previewCat.Renderer = render.NewPipeline(render.PipelineConfig{Engine: engine, Queue: previewQueue, Assets: as,
 		Limits:   validate.Limits{MaxMarkdownBytes: cfg.MaxMarkdownBytes, MaxNesting: cfg.MaxNesting, MaxTableCells: cfg.MaxTableCells},
@@ -263,6 +277,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 			log.Info("seeded starter content", "brand", "example", "templates", strings.Join(seed.TemplateIDs, ","), "seed_version", seed.Version)
 		}
 	}
+	logDefaultBrand(ctx, log, cat)
 	packages, err := bundled.VendoredPackages(rt.PackagesDir)
 	if err != nil {
 		return nil, err

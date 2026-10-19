@@ -32,6 +32,7 @@ func (s *Server) documentRoutes(mux *http.ServeMux) {
 	s.api(mux, "POST /ui/api/documents/{id}/restore", route{action: "ui.document.restore", kind: "document"}, s.handleRestoreDocument)
 	s.api(mux, "POST /ui/api/documents/{id}/publish", route{action: "ui.document.publish", kind: "document"}, s.handlePublishDocument)
 	s.api(mux, "POST /ui/api/render", route{action: "ui.render", kind: "document"}, s.handleRender)
+	s.api(mux, "POST /ui/api/documents/{id}/save-template", route{action: "ui.template.save_inline", kind: "template"}, s.handleSaveTemplate)
 }
 
 // FileOut is a stored output: the public /f/ link (a capability anyone with
@@ -95,7 +96,7 @@ func (s *Server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items, next, err := s.o.Documents.List(r.Context(), documents.ListFilter{Query: q.Get("query"), TemplateID: q.Get("template"),
-		Status: status, Client: q.Get("client"), IncludeTrashed: boolParam(r, "include_trashed"), Limit: limit, Cursor: q.Get("cursor")})
+		Inline: boolParam(r, "inline"), Status: status, Client: q.Get("client"), IncludeTrashed: boolParam(r, "include_trashed"), Limit: limit, Cursor: q.Get("cursor")})
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -160,6 +161,7 @@ type DocumentOut struct {
 	ID                string        `json:"id"`
 	Title             string        `json:"title"`
 	TemplateID        string        `json:"template_id"`
+	TemplateInline    bool          `json:"template_inline"`
 	Client            string        `json:"client"`
 	Status            string        `json:"status"`
 	LatestRevision    int           `json:"latest_revision"`
@@ -190,7 +192,7 @@ func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	out := DocumentOut{ID: d.ID, Title: d.Title, TemplateID: d.TemplateID, Client: d.Client, Status: d.Status, LatestRevision: d.LatestRevision,
+	out := DocumentOut{ID: d.ID, Title: d.Title, TemplateID: d.TemplateID, TemplateInline: d.TemplateInline, Client: d.Client, Status: d.Status, LatestRevision: d.LatestRevision,
 		PublishedRevision: d.PublishedRevision, CreatedBy: d.CreatedBy, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 		Revision: revisionOut(d.Revision), Files: []FileOut{}, PageURLs: []string{}}
 	for _, rv := range d.Revisions {
@@ -453,6 +455,9 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	out := RenderOut{DocumentID: res.DocumentID, Revision: res.Revision, Unchanged: res.Unchanged, Status: res.Status, Template: res.Template,
 		Brand: res.Brand, Files: []FileOut{}, Warnings: res.Warnings}
 	detail := activity.Detail{Revision: res.Revision, Unchanged: res.Unchanged}
+	if res.Template.Inline {
+		detail.TemplateID = res.Template.ID
+	}
 	for _, f := range res.Files {
 		out.Files = append(out.Files, FileOut{Kind: f.Kind, Name: f.Name, MIME: f.MIME, Size: f.Size, Page: f.Page, URL: s.fileURL(f)})
 		if f.Kind != "preview" {
@@ -464,6 +469,45 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 	}
 	noteActivity(r, res.DocumentID, detail)
 	writeJSON(w, http.StatusOK, out)
+}
+
+// SaveTemplateIn is POST /ui/api/documents/{id}/save-template: keep the
+// document's inline template as a stored template (save_inline_template;
+// the latest revision's input is the sample).
+type SaveTemplateIn struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
+}
+
+// SaveTemplateOut is the saved template plus the inline template it copies.
+type SaveTemplateOut struct {
+	TemplateSavedOut
+	SourceInlineID string `json:"source_inline_id"`
+}
+
+func (s *Server) handleSaveTemplate(w http.ResponseWriter, r *http.Request) {
+	var in SaveTemplateIn
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	docID := r.PathValue("id")
+	noteActivity(r, in.ID, activity.Detail{SourceDocument: docID})
+	inlineID, sample, err := s.o.Documents.InlineSource(r.Context(), docID)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	res, err := s.o.Catalog.SaveInline(r.Context(), Actor, inlineID, catalog.SaveInlineInput{ID: in.ID, Name: in.Name,
+		Description: in.Description, Category: in.Category, Sample: sample, Note: "saved from an inline template"})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	noteActivity(r, res.ID, activity.Detail{Version: res.Version, SourceDocument: docID})
+	writeJSON(w, http.StatusOK, SaveTemplateOut{TemplateSavedOut: s.savedOut(res), SourceInlineID: inlineID})
 }
 
 // pageCache is the LRU of on-demand page PNGs keyed by (PDF sha256, page),

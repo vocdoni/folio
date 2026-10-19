@@ -61,6 +61,10 @@ for other agents.
 - Download links work without a token: share them only with intended
   readers. Everything on an instance is shared by all its users.
 - AI review findings (`review_document`) are advisory only.
+- No stored template fits a one-off document? Pass `template` (an inline
+  template spec; `{}` renders with the default brand and the report layout)
+  instead of `template_id`. `save_inline_template` keeps it as a regular
+  template; prefer stored templates for anything reused or shared.
 
 ## Deeper guides
 

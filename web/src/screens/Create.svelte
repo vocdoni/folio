@@ -16,6 +16,7 @@
   import Findings from '../components/Findings.svelte';
   import Proof from '../components/Proof.svelte';
   import Icon from '../components/Icon.svelte';
+  import SaveTemplateDialog from '../components/SaveTemplateDialog.svelte';
 
   type Obj = Record<string, unknown>;
   let templates = $state<TemplateSummary[]>([]);
@@ -35,6 +36,7 @@
   let planWarnings = $state<string[]>([]);
   let aiStep = $state('');
   let aiError = $state('');
+  let saving = $state(false);
 
   const ctx = $derived({ components: Object.fromEntries((session.caps?.components ?? []).map((c) => [c.name, c.schema])) });
   let metaFields = $derived(tpl && session.caps ? metadataFields(tpl.core_metadata_schema ?? session.caps.core_metadata_schema, tpl.spec.metadata_schema, tpl.spec.languages, ctx) : []);
@@ -149,7 +151,7 @@
       <textarea id="md" class="code md" bind:value={markdown} spellcheck="true" placeholder="# Executive summary&#10;&#10;Write or paste the document in Markdown…" aria-describedby="md-help"></textarea>
       <div class="foot">
         <span id="md-help" class="small muted num" class:over={bytesUsed > maxBytes}>{bytes(bytesUsed)} of {bytes(maxBytes)}</span>
-        {#if tpl && !markdown}
+        {#if tpl && !markdown && tpl.spec.body_skeleton}
           <button type="button" class="btn small" onclick={() => (markdown = tpl!.spec.body_skeleton)}>Start from the template’s outline</button>
         {/if}
       </div>
@@ -158,7 +160,7 @@
     <section class="sheet details" aria-labelledby="details-h">
       <div class="head">
         <h2 id="details-h" class="sheet-title">Details</h2>
-        {#if session.ai.enabled}
+        {#if session.ai.enabled && !tpl?.inline}
           <button type="button" class="btn small" onclick={plan} disabled={!markdown.trim() || !!aiStep}>
             <Icon name="assistant" />{aiStep ? 'Reading your text…' : 'Fill in from my text'}
           </button>
@@ -170,13 +172,23 @@
         <div class="note warn small"><p><strong>The assistant was unsure about:</strong></p><ul>{#each planWarnings as w, i (i)}<li>{w}</li>{/each}</ul></div>
       {/if}
 
-      <div class="field">
-        <label for="tpl">Template</label>
-        <select id="tpl" value={templateId} onchange={(e) => pick((e.currentTarget as HTMLSelectElement).value)} disabled={!!revising}>
-          {#each templates as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
-        </select>
-        {#if tpl}<span class="help">{tpl.spec.description}</span>{/if}
-      </div>
+      {#if tpl?.inline}
+        <!-- An agent sent this document's template with the render call: it
+             is not in the picker; keep it, or save it as a regular template. -->
+        <div class="field">
+          <span class="label">Template</span>
+          <p class="inline-tpl"><strong>Inline template</strong> <span class="help">sent by an agent with the document</span></p>
+          {#if revising}<button type="button" class="btn small" onclick={() => (saving = true)}>Save as template</button>{/if}
+        </div>
+      {:else}
+        <div class="field">
+          <label for="tpl">Template</label>
+          <select id="tpl" value={templateId} onchange={(e) => pick((e.currentTarget as HTMLSelectElement).value)} disabled={!!revising}>
+            {#each templates as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+          </select>
+          {#if tpl}<span class="help">{tpl.spec.description}</span>{/if}
+        </div>
+      {/if}
 
       {#if tpl}
         <h3 class="sub">Document</h3>
@@ -203,6 +215,8 @@
       </button>
     </section>
   </form>
+
+  {#if revising}<SaveTemplateDialog bind:open={saving} documentId={revising.id} />{/if}
 
   {#if result}
     <section class="sheet result" aria-labelledby="result-h">
@@ -272,6 +286,9 @@
     margin: var(--s-5) 0 var(--s-3);
     padding-top: var(--s-3);
     border-top: 2px solid var(--ink);
+  }
+  .inline-tpl {
+    margin: 0 0 var(--s-2);
   }
   .render {
     width: 100%;

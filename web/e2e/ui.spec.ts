@@ -117,6 +117,41 @@ test('open a document, page through it and download its PDF', async ({ page }) =
   expect(w.problems).toEqual([]);
 });
 
+test('a document rendered with an inline template shows it and saves it as a template', async ({ page }) => {
+  const w = await watch(page);
+  const r = await mcp(page, 'render_document', {
+    template: { layout: { base: 'letter' }, sections: [{ title: 'Greeting', required: true }] },
+    brand_id: 'example',
+    markdown: '# Greeting\n\nHello from an inline template.',
+    metadata: { title: 'E2E inline letter', date: '2026-10-19', language: 'en' },
+    idempotency_key: 'e2e-ui-inline',
+  });
+  expect(r.result.structuredContent.template.inline).toBe(true);
+  await signIn(page);
+  // Revising keeps the inline template (no picker).
+  await page.goto('/ui/create?from=' + r.result.structuredContent.document_id);
+  await expect(page.getByText('Inline template', { exact: true })).toBeVisible();
+  await page.locator('#md').fill(`# Greeting\n\nRevised in the UI at ${Date.now()}.`);
+  await page.getByRole('button', { name: 'Render a new revision' }).click();
+  await expect(page.getByRole('heading', { name: /Revision \d+ is ready/ })).toBeVisible({ timeout: 60_000 });
+  await page.goto('/ui/documents');
+  await page.locator('#doc-template').selectOption('inline');
+  await page.getByRole('link', { name: /E2E inline letter/ }).first().click();
+  const drawer = page.getByRole('dialog', { name: 'E2E inline letter' });
+  await expect(drawer.getByText(/inline template, revision \d+ of \d+/)).toBeVisible();
+  await axe(page, 'inline document');
+  await drawer.getByRole('button', { name: 'Save as template' }).click();
+  const save = page.getByRole('dialog', { name: 'Save as a template' });
+  await save.getByLabel('Template id').fill(`e2e-inline-${Date.now().toString(36)}`); // unique: reruns reuse the document
+  await save.getByLabel('Name').fill('E2E inline letter');
+  await axe(page, 'save as template');
+  await save.getByRole('button', { name: 'Save template' }).click();
+  await expect(page.getByText('Saved as the template “E2E inline letter”.')).toBeVisible({ timeout: 60_000 });
+  await page.goto('/ui/templates');
+  await expect(page.getByText('E2E inline letter').first()).toBeVisible();
+  expect(w.problems).toEqual([]);
+});
+
 test('create a document from Markdown with the assistant filling in the details', async ({ page }) => {
   const w = await watch(page);
   await signIn(page);

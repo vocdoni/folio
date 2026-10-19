@@ -63,6 +63,13 @@ func notFound(kind Kind, id string) error {
 	return &model.Error{Code: model.ErrNotFound, Message: fmt.Sprintf("%s %q does not exist", kind, id)}
 }
 
+// reserved is the error for a stored template id that is reserved for
+// inline templates.
+func reserved(id string) error {
+	return &model.Error{Code: model.ErrInvalidInput,
+		Message: fmt.Sprintf("template id %q: ids starting with inline- are reserved for inline templates", id)}
+}
+
 // putVersion inserts version 1 (create) or latest+1 (update) inside one
 // IMMEDIATE transaction. For updates expectedVersion must equal the current
 // latest version, otherwise the transaction is rolled back with conflict.
@@ -73,6 +80,14 @@ func notFound(kind Kind, id string) error {
 func putVersion(ctx context.Context, db *store.DB, kind Kind, id string, create bool, expectedVersion int,
 	spec []byte, note, actor string, now time.Time, extra func(tx *sql.Tx, version int) error) (int, error) {
 	versions, heads := kind.tables()
+	if kind == KindTemplate && model.IsInlineID(id) {
+		// Inline templates are immutable and invisible to the catalog's
+		// writers; documents insert them (see documents.Render).
+		if create {
+			return 0, reserved(id)
+		}
+		return 0, notFound(kind, id)
+	}
 	var newVersion int
 	err := db.WriteTx(ctx, func(tx *sql.Tx) error {
 		var latest int
@@ -123,6 +138,9 @@ func putVersion(ctx context.Context, db *store.DB, kind Kind, id string, create 
 // setArchived archives (archived=true) or unarchives an item.
 func setArchived(ctx context.Context, db *store.DB, kind Kind, id string, archived bool, actor string, now time.Time) error {
 	_, heads := kind.tables()
+	if kind == KindTemplate && model.IsInlineID(id) {
+		return notFound(kind, id)
+	}
 	return db.WriteTx(ctx, func(tx *sql.Tx) error {
 		var val any
 		if archived {
@@ -225,6 +243,9 @@ func list(ctx context.Context, db *store.DB, kind Kind, f ListFilter) ([]*Item, 
 	q := `SELECT h.id, h.latest_version, h.archived_at, v.spec FROM ` + heads + ` h
 	      JOIN ` + versions + ` v ON v.id = h.id AND v.version = h.latest_version WHERE h.id > ?`
 	args := []any{after}
+	if kind == KindTemplate {
+		q += ` AND h.id NOT LIKE 'inline-%'` // inline templates are never listed
+	}
 	if !f.IncludeArchived {
 		q += ` AND h.archived_at IS NULL`
 	}

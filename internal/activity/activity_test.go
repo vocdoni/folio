@@ -194,3 +194,16 @@ func TestBroadcasterLimitsAndClose(t *testing.T) {
 		t.Fatalf("len = %d", b.Len())
 	}
 }
+
+func TestSanitizeDetailIDs(t *testing.T) {
+	r, err := Sanitize(Row{Source: SourceMCP, Actor: "alice", Action: "render_document", Outcome: OutcomeOK,
+		Detail: Detail{TemplateID: "inline-0123456789abcdef", SourceDocument: "0199a000-0000-7000-8000-000000000001"}})
+	if err != nil || r.Detail.TemplateID != "inline-0123456789abcdef" || r.Detail.SourceDocument == "" {
+		t.Fatalf("valid ids dropped: %+v %v", r.Detail, err)
+	}
+	r, _ = Sanitize(Row{Source: SourceMCP, Actor: "alice", Action: "render_document", Outcome: OutcomeOK,
+		Detail: Detail{TemplateID: "proposal", SourceDocument: "<b>x</b>"}})
+	if r.Detail.TemplateID != "" || r.Detail.SourceDocument != "" {
+		t.Fatalf("not sanitised: %+v", r.Detail)
+	}
+}

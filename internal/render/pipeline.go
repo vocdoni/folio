@@ -77,6 +77,7 @@ var DefaultFormats = []model.Format{model.FormatPDF, model.FormatDOCX}
 // CanonicalInput is the canonical JSON of everything that determines the
 // output, including the resolved template and brand versions, and its SHA-256.
 func CanonicalInput(t, b model.Ref, in model.DocumentInput) ([]byte, string, error) {
+	t.Inline, b.Inline = false, false // derived from the id: never part of the hash
 	formats := append([]model.Format(nil), in.Formats...)
 	if len(formats) == 0 {
 		formats = append(formats, DefaultFormats...)

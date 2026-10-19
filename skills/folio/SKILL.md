@@ -61,6 +61,10 @@ for other agents.
 - Download links work without a token: share them only with intended
   readers. Everything on an instance is shared by all its users.
 - AI review findings (`review_document`) are advisory only.
+- No stored template fits a one-off document? Pass `template` (an inline
+  template spec; `{}` renders with the default brand and the report layout)
+  instead of `template_id`. `save_inline_template` keeps it as a regular
+  template; prefer stored templates for anything reused or shared.
 
 ## Deeper guides
 
@@ -69,7 +73,7 @@ This file is all you need for the usual flow. For details, call the MCP tool
 guide is the same text the Folio server serves:
 
 - `workflow`: Workflow. Which Folio tools to call, in which order, for every common task.
-- `recipes`: Recipes. Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, and creating a brand and template.
+- `recipes`: Recipes. Step-by-step recipes for common jobs: a proposal, a quote, a statement of work, revising a colleague's document, a one-off document without a stored template, and creating a brand and template.
 - `markdown`: Markdown. The Markdown dialect Folio accepts, how images, links and sections work, and the input limits.
 - `components`: Components. Structured blocks (budget, milestones, deliverables, signatures, info): their data, placement rules and how they render.
 - `templates`: Templates. Every field of a template spec, how schemas, sections, samples and labels work, and how versions behave.

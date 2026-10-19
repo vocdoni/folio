@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { query } from './api';
-import { actionName, ago, bytes, count, percent } from './format';
+import { actionName, ago, bytes, count, isInline, percent } from './format';
 
 describe('format', () => {
   it('formats sizes, rates and counts', () => {
@@ -19,6 +19,11 @@ describe('format', () => {
     expect(actionName('render_document')).toBe('Rendered a document');
     expect(actionName('ui.login')).toBe('Signed in');
     expect(actionName('something_new')).toBe('something_new');
+  });
+  it('names inline templates', () => {
+    expect(isInline('inline-0123456789abcdef')).toBe(true);
+    expect(isInline('inline')).toBe(false);
+    expect(actionName('save_inline_template')).toBe('Saved an inline template as a template');
   });
   it('says how long ago', () => {
     const now = Date.parse('2026-10-18T12:00:00Z');

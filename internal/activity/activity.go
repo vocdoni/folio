@@ -32,8 +32,9 @@ const (
 // TimeFormat is the stored timestamp format (sortable, millisecond precision).
 const TimeFormat = "2006-01-02T15:04:05.000Z"
 
-// Detail is the allowlisted detail object: integers, booleans and the
-// formats enum only, never strings taken from a request.
+// Detail is the allowlisted detail object: integers, booleans, the formats
+// enum and ids the server checked (an inline template id, a source
+// document id), never free text taken from a request.
 type Detail struct {
 	Revision         int      `json:"revision,omitempty"`
 	Version          int      `json:"version,omitempty"`
@@ -45,6 +46,8 @@ type Detail struct {
 	Archived         *bool    `json:"archived,omitempty"`
 	FindingsErrors   int      `json:"findings_errors,omitempty"`
 	FindingsWarnings int      `json:"findings_warnings,omitempty"`
+	TemplateID       string   `json:"template_id,omitempty"`     // inline template of a render (inline-<hash>)
+	SourceDocument   string   `json:"source_document,omitempty"` // document an inline template was saved from
 }
 
 // Row is one activity entry.
@@ -68,6 +71,7 @@ var (
 	kindRE    = regexp.MustCompile(`^[a-z]{1,32}$`)
 	actorRE   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 	codeRE    = regexp.MustCompile(`^[a-z_]{1,32}$`)
+	inlineRE  = regexp.MustCompile(`^inline-[0-9a-f]{16}$`)
 	errBadRow = errors.New("activity: invalid row")
 )
 
@@ -93,6 +97,12 @@ func Sanitize(r Row) (Row, error) {
 		}
 	}
 	r.Detail.Formats = fs
+	if !inlineRE.MatchString(r.Detail.TemplateID) {
+		r.Detail.TemplateID = ""
+	}
+	if !idRE.MatchString(r.Detail.SourceDocument) {
+		r.Detail.SourceDocument = ""
+	}
 	return r, nil
 }
 

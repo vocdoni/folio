@@ -22,7 +22,8 @@
     error = '';
     try {
       const page = await api.get<{ items: DocumentSummary[]; next_cursor?: string }>(
-        '/documents' + query({ query: q, status, template, cursor: more ? cursor : '', limit: 48 }),
+        // "inline" is a reserved template id: the option filters inline templates.
+        '/documents' + query({ query: q, status, template: template === 'inline' ? '' : template, inline: template === 'inline', cursor: more ? cursor : '', limit: 48 }),
       );
       items = more ? [...items, ...page.items] : page.items;
       cursor = page.next_cursor ?? '';
@@ -75,6 +76,7 @@
       <label for="doc-template">Template</label>
       <select id="doc-template" bind:value={template}>
         <option value="">Any template</option>
+        <option value="inline">Inline templates</option>
         {#each templates as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
       </select>
     </div>
@@ -104,6 +106,7 @@
               <span class="row small">
                 <span class="chip {d.status}">{d.status === 'draft' ? 'Draft' : d.status === 'published' ? 'Published' : 'In the trash'}</span>
                 <span class="muted">rev. {d.latest_revision}, {ago(d.updated_at)}</span>
+                {#if d.template_inline}<span class="chip">Inline template</span>{/if}
               </span>
             </span>
           </a>

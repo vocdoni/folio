@@ -21,6 +21,7 @@ export interface Stats {
   documents: number;
   trashed: number;
   templates: number;
+  inline_templates: number;
   brands: number;
   assets: number;
   renders_today: number;
@@ -45,6 +46,8 @@ export interface ActivityDetail {
   archived?: boolean;
   findings_errors?: number;
   findings_warnings?: number;
+  template_id?: string;
+  source_document?: string;
 }
 
 export interface ActivityRow {
@@ -74,6 +77,7 @@ export interface DocumentSummary {
   id: string;
   title: string;
   template_id: string;
+  template_inline: boolean;
   client: string;
   status: DocStatus;
   latest_revision: number;
@@ -87,6 +91,7 @@ export interface DocumentSummary {
 export interface Ref {
   id: string;
   version: number;
+  inline?: boolean;
 }
 
 export interface FileOut {
@@ -113,6 +118,7 @@ export interface DocumentDetail {
   id: string;
   title: string;
   template_id: string;
+  template_inline: boolean;
   client: string;
   status: DocStatus;
   latest_revision: number;
@@ -203,6 +209,7 @@ export interface Item<S> {
   version: number;
   latest_version: number;
   archived: boolean;
+  inline?: boolean;
   spec: S;
   versions: VersionInfo[];
   core_metadata_schema?: JSONSchema;
@@ -256,11 +263,23 @@ export interface Capabilities {
     max_pages: number;
     preview_pages_stored: number;
     trash_retention_days: number;
+    max_inline_template_bytes: number;
+    max_layout_typst_bytes: number;
   };
   reviewer: boolean;
   sandbox_level: string;
   public_url: string;
   mcp_url: string;
+  default_brand: string;
+}
+
+/** POST /documents/{id}/save-template: the saved template version. */
+export interface SavedTemplate {
+  id: string;
+  version: number;
+  warnings: Finding[];
+  files: FileOut[];
+  source_inline_id: string;
 }
 
 export interface PreviewResult {

@@ -5,6 +5,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -55,6 +56,8 @@ type LimitsOut struct {
 	MaxImagesPerCall       int   `json:"max_images_per_call"`
 	MaxListLimit           int   `json:"max_list_limit"`
 	IdempotencyWindowHours int   `json:"idempotency_window_hours"`
+	MaxInlineTemplateBytes int   `json:"max_inline_template_bytes" jsonschema:"canonical JSON size limit of render_document.template (measured before the brand and id are filled in)"`
+	MaxLayoutTypstBytes    int   `json:"max_layout_typst_bytes" jsonschema:"size limit of layout.typst (inline and stored templates)"`
 }
 
 type CapabilitiesOut struct {
@@ -70,9 +73,10 @@ type CapabilitiesOut struct {
 	Limits          LimitsOut      `json:"limits"`
 	ReviewerEnabled bool           `json:"reviewer_enabled"`
 	SandboxLevel    string         `json:"sandbox_level"`
+	DefaultBrand    string         `json:"default_brand" jsonschema:"brand of inline templates that name none; empty when there is none (pass brand_id)"`
 }
 
-func (d *Deps) capabilities() (*CapabilitiesOut, error) {
+func (d *Deps) capabilities(ctx context.Context) (*CapabilitiesOut, error) {
 	bases, err := bundled.BaseLayouts()
 	if err != nil {
 		return nil, err
@@ -95,7 +99,13 @@ func (d *Deps) capabilities() (*CapabilitiesOut, error) {
 		MaxAssetBytes: c.MaxAssetBytes, MaxRequestBytes: c.MaxRequestBytes, MaxPages: c.MaxPages,
 		RenderTimeoutSeconds: int(c.RenderTimeout.Seconds()), PreviewPagesStored: c.PreviewPagesStored,
 		PreviewRetentionHours: int(c.PreviewRetention.Hours()), TrashRetentionHours: int(c.TrashRetention.Hours()),
-		MaxImagesPerCall: MaxImages, MaxListLimit: 200, IdempotencyWindowHours: 24}
+		MaxImagesPerCall: MaxImages, MaxListLimit: 200, IdempotencyWindowHours: 24,
+		MaxInlineTemplateBytes: c.MaxInlineTemplateBytes, MaxLayoutTypstBytes: c.MaxLayoutTypstBytes}
+	if id, err := d.Catalog.DefaultBrand(ctx); err == nil {
+		out.DefaultBrand = id
+	} else if !errors.As(err, new(*model.Error)) {
+		return nil, err // a real failure, not "no default brand"
+	}
 	return out, nil
 }
 
@@ -195,11 +205,18 @@ type ListTemplatesOut struct {
 }
 
 type GetTemplateOut struct {
-	Template      json.RawMessage   `json:"template" jsonschema:"the full template spec; valid create_template/update_template input"`
+	Template      json.RawMessage   `json:"template" jsonschema:"the full template spec; valid create_template/update_template input (for an inline template: render_document.template input)"`
 	Version       int               `json:"version"`
 	LatestVersion int               `json:"latest_version"`
 	Archived      bool              `json:"archived"`
+	Inline        bool              `json:"inline" jsonschema:"an inline template (id inline-…): immutable, never listed"`
 	Versions      []catalog.Version `json:"versions"`
+}
+
+// getTemplateOut is get_template's output (and the template resource's).
+func getTemplateOut(it *catalog.Item) *GetTemplateOut {
+	return &GetTemplateOut{Template: it.Spec, Version: it.Version, LatestVersion: it.LatestVersion, Archived: it.Archived,
+		Inline: model.IsInlineID(it.ID), Versions: it.Versions}
 }
 
 type CreateTemplateIn struct {
@@ -321,7 +338,7 @@ func templateSummary(it *catalog.Item) TemplateSummary {
 const (
 	descGetGuide = `Read Folio's authoring guides (Markdown). Call with no topic for the index. Topics: workflow (tool sequence, revising, publishing), recipes (proposal, quote, statement of work, revising a colleague's document, new brand and template), markdown (supported syntax, images, links), components (budget, milestones, deliverables, signatures, info and their data), templates (spec fields, schemas, sections, samples), typst-layouts (custom layout contract), brands (colors, fonts, logos), troubleshooting (every error and finding code with the fix). Read templates, typst-layouts and brands before create_template or create_brand.`
 
-	descCapabilities = `Report what this Folio instance supports: version, output formats, built-in languages, base layouts with the layout.options schema, components with their data schemas, brand fonts, vendored typst packages, template label keys, limits (sizes, pages, timeouts, retention), whether the AI reviewer is enabled and the sandbox level. Call it once before authoring templates or brands.`
+	descCapabilities = `Report what this Folio instance supports: version, output formats, built-in languages, base layouts with the layout.options schema, components with their data schemas, brand fonts, vendored typst packages, template label keys, limits (sizes, pages, timeouts, retention, inline template sizes), whether the AI reviewer is enabled, the sandbox level and default_brand (the brand of inline templates that name none). Call it once before authoring templates or brands.`
 
 	descListBrands = `List brands (latest versions, sorted by id). Archived brands are hidden unless include_archived=true. Paginate with limit and next_cursor. Use get_brand for the full spec.`
 
@@ -335,7 +352,7 @@ const (
 
 	descListTemplates = `List document templates (latest versions, sorted by id), the first step of every new document. Filter by query or category; archived templates are hidden unless include_archived=true. Then call get_template for the one that fits.`
 
-	descGetTemplate = `Get a template (latest or a given version): sections (required ones and their aliases), metadata_schema and data_schema (what metadata and data render_document needs), components, body_skeleton (start your Markdown from it), a complete sample, labels, layout, and versions [{version, note, created_by, created_at}]. The template object is valid create_template / update_template input (round-trippable). Read it before writing a document.`
+	descGetTemplate = `Get a template (latest or a given version): sections (required ones and their aliases), metadata_schema and data_schema (what metadata and data render_document needs), components, body_skeleton (start your Markdown from it), a complete sample, labels, layout, and versions [{version, note, created_by, created_at}]. The template object is valid create_template / update_template input (round-trippable). For an inline id (inline-…, inline=true; from render_document or get_document) the spec is the normalised inline template: reuse it as render_document.template, through template_id, or keep it with save_inline_template, not as create_template input (its id is reserved). Read it before writing a document.`
 
 	descCreateTemplate = `Create a template (version 1). Folio validates the spec (schemas compile, sections, components, layout.options, custom typst imports) and renders the template's sample; the call fails with validation_failed if the sample render produces any error or any warning other than placeholder findings, so ship a complete sample. Returns the version, warnings, links to the sample PDF/DOCX and preview PNGs (they expire), and, when the server has an AI reviewer, an advisory review of the sample (never blocking). Read get_guide('templates') and, for custom layouts, get_guide('typst-layouts') first. brand_id must name an existing, unarchived brand.`
 
@@ -365,8 +382,8 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 		}})
 
 	register(s, d, tool[struct{}, CapabilitiesOut]{Name: "get_capabilities", Title: "Folio capabilities", Description: descCapabilities, Access: readOnly,
-		Handle: func(_ context.Context, c *call, _ struct{}) (*CapabilitiesOut, error) {
-			out, err := d.capabilities()
+		Handle: func(ctx context.Context, c *call, _ struct{}) (*CapabilitiesOut, error) {
+			out, err := d.capabilities(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -472,8 +489,12 @@ func registerCatalogTools(s *mcp.Server, d *Deps) {
 			if err != nil {
 				return nil, err
 			}
-			c.Summary("template %s v%d (latest v%d, %d versions)", it.ID, it.Version, it.LatestVersion, len(it.Versions))
-			return &GetTemplateOut{Template: it.Spec, Version: it.Version, LatestVersion: it.LatestVersion, Archived: it.Archived, Versions: it.Versions}, nil
+			if model.IsInlineID(it.ID) {
+				c.Summary("inline template %s (immutable; reuse it with render_document template_id)", it.ID)
+			} else {
+				c.Summary("template %s v%d (latest v%d, %d versions)", it.ID, it.Version, it.LatestVersion, len(it.Versions))
+			}
+			return getTemplateOut(it), nil
 		}})
 
 	register(s, d, tool[CreateTemplateIn, TemplateResultOut]{Name: "create_template", Title: "Create a template", Description: descCreateTemplate, Access: write,

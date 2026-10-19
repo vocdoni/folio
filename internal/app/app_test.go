@@ -19,8 +19,10 @@ import (
 	"time"
 
 	"github.com/vocdoni/folio/internal/activity"
+	"github.com/vocdoni/folio/internal/catalog"
 	"github.com/vocdoni/folio/internal/config"
 	"github.com/vocdoni/folio/internal/httpserver"
+	"github.com/vocdoni/folio/internal/model"
 	"github.com/vocdoni/folio/internal/sandbox"
 	"github.com/vocdoni/folio/internal/store"
 )
@@ -215,5 +217,34 @@ func TestNewFailsOnBrokenTool(t *testing.T) {
 	}
 	if errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected cancel")
+	}
+}
+
+// Acceptance 7b: a FOLIO_DEFAULT_BRAND that names no live brand is logged at
+// startup; a live one is not.
+func TestDefaultBrandWarning(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	cat := &catalog.Service{DB: db, Now: time.Now, DefaultBrandID: "ghost"}
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	logDefaultBrand(ctx, log, cat)
+	if !strings.Contains(buf.String(), `"level":"WARN"`) || !strings.Contains(buf.String(), `"default_brand":"ghost"`) {
+		t.Fatalf("expected a warning naming ghost: %s", buf.String())
+	}
+	b := model.Brand{ID: "ghost", Name: "Ghost",
+		Colors: model.BrandColors{Primary: "#000000", Secondary: "#000000", Accent: "#000000", Text: "#000000", Muted: "#000000", Background: "#FFFFFF"},
+		Fonts:  model.BrandFonts{Heading: "Inter", Body: "Inter", Mono: "JetBrains Mono"}}
+	if _, err := cat.CreateBrand(ctx, "seed", b, ""); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	logDefaultBrand(ctx, log, cat)
+	if buf.Len() != 0 {
+		t.Fatalf("unexpected log: %s", buf.String())
 	}
 }

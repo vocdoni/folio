@@ -15,7 +15,7 @@ Planned as 0.1.0, the first release.
 
 ### Added
 
-- MCP server over Streamable HTTP with static bearer tokens: 24 tools for
+- MCP server over Streamable HTTP with static bearer tokens: 25 tools for
   templates, brands, assets and documents, guides, resources and prompts.
 - Rendering of branded PDF (typst) and editable DOCX (pandoc) from Markdown,
   metadata and typed data, with PNG previews and post-render checks.
@@ -46,5 +46,14 @@ Planned as 0.1.0, the first release.
 - Docker image for linux/amd64 and linux/arm64, docker compose file and
   Railway guide.
 - Agent Skill (`skills/folio`) and Claude Code plugin (`.claude-plugin`).
+- Inline templates: `render_document` and `validate_document` take `template`
+  (an inline spec) instead of `template_id`; the spec is stored as a hidden,
+  content-addressed template `inline-<hash>` that revisions reuse and
+  `save_inline_template` turns into a regular template. `list_documents`
+  gains `inline`, documents report `template_inline`, `get_capabilities`
+  reports `default_brand` and the limits `max_inline_template_bytes` and
+  `max_layout_typst_bytes` (`FOLIO_DEFAULT_BRAND`,
+  `FOLIO_MAX_INLINE_TEMPLATE_BYTES`, `FOLIO_MAX_LAYOUT_TYPST_BYTES`); the
+  retention pass deletes unreferenced inline templates.
 
 [Unreleased]: https://github.com/vocdoni/folio/commits/main

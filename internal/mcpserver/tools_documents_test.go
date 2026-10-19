@@ -267,7 +267,8 @@ func TestToolSurface(t *testing.T) {
 		"list_assets", "validate_document", "list_documents", "get_document"}
 	destructiveTools := []string{"delete_asset", "delete_document"}
 	idempotentWrites := []string{"archive_brand", "archive_template", "preview_template", "review_document", "publish_document", "update_asset"}
-	writes := []string{"create_brand", "update_brand", "create_template", "update_template", "upload_asset", "render_document", "restore_document"}
+	writes := []string{"create_brand", "update_brand", "create_template", "update_template", "upload_asset", "render_document", "restore_document",
+		"save_inline_template"}
 	var names []string
 	for _, tl := range res.Tools {
 		names = append(names, tl.Name)

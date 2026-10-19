@@ -33,20 +33,21 @@ func (s *Server) overviewRoutes(mux *http.ServeMux) {
 
 // StatsOut is GET /ui/api/stats.
 type StatsOut struct {
-	Documents    int     `json:"documents"` // not in the trash
-	Trashed      int     `json:"trashed"`
-	Templates    int     `json:"templates"` // not archived
-	Brands       int     `json:"brands"`    // not archived
-	Assets       int     `json:"assets"`    // not deleted
-	RendersToday int     `json:"renders_today"`
-	Calls24h     int     `json:"calls_24h"`
-	Errors24h    int     `json:"errors_24h"`
-	ErrorRate24h float64 `json:"error_rate_24h"`
-	StorageBytes int64   `json:"storage_bytes"` // distinct output and asset blobs
-	Reviewer     bool    `json:"reviewer"`
-	AI           bool    `json:"ai"`
-	SandboxLevel string  `json:"sandbox_level"`
-	Version      string  `json:"version"`
+	Documents       int     `json:"documents"` // not in the trash
+	Trashed         int     `json:"trashed"`
+	Templates       int     `json:"templates"`        // stored, not archived
+	InlineTemplates int     `json:"inline_templates"` // unlisted, kept while a revision uses them
+	Brands          int     `json:"brands"`           // not archived
+	Assets          int     `json:"assets"`           // not deleted
+	RendersToday    int     `json:"renders_today"`
+	Calls24h        int     `json:"calls_24h"`
+	Errors24h       int     `json:"errors_24h"`
+	ErrorRate24h    float64 `json:"error_rate_24h"`
+	StorageBytes    int64   `json:"storage_bytes"` // distinct output and asset blobs
+	Reviewer        bool    `json:"reviewer"`
+	AI              bool    `json:"ai"`
+	SandboxLevel    string  `json:"sandbox_level"`
+	Version         string  `json:"version"`
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
@@ -55,12 +56,13 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	err := s.o.DB.R.QueryRowContext(ctx, `SELECT
 		(SELECT count(*) FROM documents WHERE trashed_at IS NULL),
 		(SELECT count(*) FROM documents WHERE trashed_at IS NOT NULL),
-		(SELECT count(*) FROM template_heads WHERE archived_at IS NULL),
+		(SELECT count(*) FROM template_heads WHERE archived_at IS NULL AND id NOT LIKE 'inline-%'),
+		(SELECT count(*) FROM template_heads WHERE id LIKE 'inline-%'),
 		(SELECT count(*) FROM brand_heads WHERE archived_at IS NULL),
 		(SELECT count(*) FROM assets WHERE deleted_at IS NULL),
 		(SELECT coalesce(sum(size), 0) FROM (SELECT sha256, max(size) AS size FROM files GROUP BY sha256
 		                                     UNION SELECT sha256, size FROM assets))`).
-		Scan(&out.Documents, &out.Trashed, &out.Templates, &out.Brands, &out.Assets, &out.StorageBytes)
+		Scan(&out.Documents, &out.Trashed, &out.Templates, &out.InlineTemplates, &out.Brands, &out.Assets, &out.StorageBytes)
 	if err != nil {
 		writeError(w, r, fmt.Errorf("webui: stats: %w", err))
 		return
@@ -204,16 +206,19 @@ type CapabilitiesOut struct {
 	SandboxLevel       string          `json:"sandbox_level"`
 	PublicURL          string          `json:"public_url"`
 	MCPURL             string          `json:"mcp_url"`
+	DefaultBrand       string          `json:"default_brand"` // brand of inline templates that name none ("" = none)
 }
 
 // LimitsOut are the limits the UI enforces before sending.
 type LimitsOut struct {
-	MaxMarkdownBytes   int   `json:"max_markdown_bytes"`
-	MaxAssetBytes      int64 `json:"max_asset_bytes"`
-	MaxRequestBytes    int64 `json:"max_request_bytes"`
-	MaxPages           int   `json:"max_pages"`
-	PreviewPagesStored int   `json:"preview_pages_stored"`
-	TrashRetentionDays int   `json:"trash_retention_days"`
+	MaxMarkdownBytes       int   `json:"max_markdown_bytes"`
+	MaxAssetBytes          int64 `json:"max_asset_bytes"`
+	MaxRequestBytes        int64 `json:"max_request_bytes"`
+	MaxPages               int   `json:"max_pages"`
+	PreviewPagesStored     int   `json:"preview_pages_stored"`
+	TrashRetentionDays     int   `json:"trash_retention_days"`
+	MaxInlineTemplateBytes int   `json:"max_inline_template_bytes"`
+	MaxLayoutTypstBytes    int   `json:"max_layout_typst_bytes"`
 }
 
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +232,14 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 		CoreMetadataSchema: validate.CoreMetadataSchema(brandkit.BuiltinLanguages), Reviewer: s.o.Reviewer, SandboxLevel: s.o.Sandbox,
 		PublicURL: c.PublicURL, MCPURL: strings.TrimRight(c.PublicURL, "/") + "/mcp",
 		Limits: LimitsOut{MaxMarkdownBytes: c.MaxMarkdownBytes, MaxAssetBytes: c.MaxAssetBytes, MaxRequestBytes: c.MaxRequestBytes,
-			MaxPages: c.MaxPages, PreviewPagesStored: c.PreviewPagesStored, TrashRetentionDays: int(c.TrashRetention.Hours() / 24)}}
+			MaxPages: c.MaxPages, PreviewPagesStored: c.PreviewPagesStored, TrashRetentionDays: int(c.TrashRetention.Hours() / 24),
+			MaxInlineTemplateBytes: c.MaxInlineTemplateBytes, MaxLayoutTypstBytes: c.MaxLayoutTypstBytes}}
+	if id, err := s.o.Catalog.DefaultBrand(r.Context()); err == nil {
+		out.DefaultBrand = id
+	} else if !errors.As(err, new(*model.Error)) {
+		writeError(w, r, err)
+		return
+	}
 	for _, b := range bases {
 		out.Layouts = append(out.Layouts, LayoutOut{Name: b, OptionsSchema: json.RawMessage(catalog.OptionsSchema)})
 	}

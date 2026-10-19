@@ -34,6 +34,7 @@ type Document struct {
 	ID                string     `json:"id"`
 	Title             string     `json:"title"`
 	TemplateID        string     `json:"template_id"`
+	TemplateInline    bool       `json:"template_inline"`
 	Client            string     `json:"client"`
 	Status            string     `json:"status"`
 	LatestRevision    int        `json:"latest_revision"`
@@ -61,6 +62,7 @@ func (s *Service) Get(ctx context.Context, id string, revision int) (*Document, 
 		return nil, fmt.Errorf("documents: get: %w", err)
 	}
 	d.PublishedRevision, d.CreatedAt, d.UpdatedAt = int(pub.Int64), parseTS(created), parseTS(updated)
+	d.TemplateInline = model.IsInlineID(d.TemplateID)
 	if revision == 0 {
 		revision = d.LatestRevision
 	}
@@ -79,7 +81,7 @@ func (s *Service) Get(ctx context.Context, id string, revision int) (*Document, 
 			&r.InputBlob, &warnings, &review, &r.CreatedBy, &ts); err != nil {
 			return nil, fmt.Errorf("documents: scan revision: %w", err)
 		}
-		r.CreatedAt = parseTS(ts)
+		r.CreatedAt, r.Template.Inline = parseTS(ts), model.IsInlineID(r.Template.ID)
 		_ = json.Unmarshal([]byte(warnings), &r.Warnings)
 		if review.Valid {
 			r.Review = json.RawMessage(review.String)

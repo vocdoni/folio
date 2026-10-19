@@ -163,6 +163,9 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_MAX_REQUEST_BYTES` | `16MiB` | MCP request body limit |
 | `FOLIO_MAX_PAGES` | `200` | maximum rendered pages |
 | `FOLIO_MAX_TABLE_CELLS` | `10000` | maximum cells per table |
+| `FOLIO_DEFAULT_BRAND` | the only live brand | brand of inline templates that name none (`render_document.template` without `brand_id`); startup warns when it names no live brand |
+| `FOLIO_MAX_INLINE_TEMPLATE_BYTES` | `256KiB` | size limit of an inline template spec (canonical JSON, measured before the brand and id are filled in) |
+| `FOLIO_MAX_LAYOUT_TYPST_BYTES` | `64KiB` | size limit of a custom `layout.typst`, inline or stored |
 | `FOLIO_TRASH_RETENTION` | `720h` | trashed documents are purged after this |
 | `FOLIO_PREVIEW_RETENTION` | `24h` | template preview renders expire after this |
 | `FOLIO_PREVIEW_PAGES_STORED` | `3` | preview PNG pages stored per revision (later pages are rendered on demand) |
@@ -650,6 +653,39 @@ Mark revision 2 as final:
 `restore_document` brings it back, and `delete_document` with
 `"purge": true` deletes it for good (published documents also need
 `"confirm_published": true`).
+
+### Render without a stored template
+
+For a one-off document, pass the template in the call (`template`, the
+`create_template` spec with every field optional) instead of a
+`template_id`. `{"template": {}}` uses the default brand
+(`get_capabilities.default_brand`, see `FOLIO_DEFAULT_BRAND`) and the
+`report` layout; this letter names its brand and base layout:
+
+<!-- folio-example tool=render_document -->
+```json
+{
+  "template": {"layout": {"base": "letter"}, "sections": [{"title": "Greeting", "required": true}]},
+  "brand_id": "acme",
+  "idempotency_key": "letter-001",
+  "metadata": {"title": "Thank you", "date": "2026-10-19", "language": "en", "client": "Globex"},
+  "markdown": "# Greeting\n\nThank you for choosing ACME Studio for the Globex website."
+}
+```
+
+The result's template is `{"id": "inline-…", "version": 1, "inline": true}`:
+revisions keep it, `template_id: "inline-…"` reuses it, and it never shows
+up in `list_templates` or the Templates screen (documents show "Inline
+template"). To keep it as a regular template, with the document's latest
+input as its sample:
+
+<!-- folio-example tool=save_inline_template -->
+```json
+{"document_id": "<document_id>", "id": "acme-letter", "name": "ACME letter", "category": "letter"}
+```
+
+Unused inline templates are deleted by the retention pass once no revision
+references them.
 
 ### Components and figures
 

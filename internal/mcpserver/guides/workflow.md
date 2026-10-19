@@ -45,6 +45,37 @@ does not calculate, round or check them, so get them right before rendering.
    `first`, `all`).
 7. Look at the warnings and the preview, then share the PDF and DOCX links.
 
+## One-off documents: inline templates
+
+When no stored template fits a one-off document (or you own its layout),
+skip `list_templates` and pass the template itself as
+`render_document.template`: the `create_template` spec with every field
+optional. Stored templates stay the right choice for anything shared,
+reused or curated.
+
+- `{"template": {}}` renders with the default brand
+  (`get_capabilities.default_brand`; when it is empty, pass `brand_id`) and
+  the `report` layout, every component allowed, languages `en` plus the
+  document's `metadata.language`.
+- `{"template": {"layout": {"base": "letter"}}}` picks another base layout.
+  Add `sections`, `components`, `metadata_schema`, `data_schema`, `labels`,
+  `strict` or a custom `layout.typst` as for a stored template
+  (`get_guide('templates')`); `id`, `name`, `description`, `category`,
+  `body_skeleton` and `sample` are ignored.
+- The result's template is `{"id": "inline-…", "version": 1, "inline": true}`
+  and the same spec (with the same brand and language) always gets the same
+  id. Revisions without `template` or `template_id` keep it;
+  `template_id: "inline-…"` reuses it for another document without resending
+  the spec; `get_template` reads it.
+- Inline templates never appear in `list_templates`. To keep one,
+  `save_inline_template(document_id, id, name)` creates a regular template
+  from it with the document's latest input as its sample.
+- `validate_document` takes the same `template`; problems with the spec come
+  back with paths under `/template` (for example `/template/layout/base`); it has no `brand_id`, so name the
+  brand in `template.brand_id` when the instance has no default brand.
+- Limits: `get_capabilities.limits.max_inline_template_bytes` for the spec
+  and `max_layout_typst_bytes` for `layout.typst` (`too_large` otherwise).
+
 ## Revise a document (yours or a colleague's)
 
 1. `get_document(id, include_source=true)`. `source` holds the exact input of
@@ -53,8 +84,9 @@ does not calculate, round or check them, so get them right before rendering.
    you must pass back.
 2. Edit the source and call `render_document` with `document_id` and
    `expected_revision` set to `latest_revision`. `template_id` defaults to
-   the document's template and the latest template and brand versions are
-   used; pass `template_version` to stay on an older template version.
+   the document's template (stored or inline) and the latest template and
+   brand versions are used; pass `template_version` to stay on an older
+   template version, `template_id` or `template` to switch templates.
 3. If someone else revised the document in the meantime the call fails with
    `conflict` naming the current revision: re-read, re-apply your change,
    retry. Re-sending identical input returns the existing revision with
@@ -84,8 +116,9 @@ Every revision is kept; `get_document(id, revision=N)` shows any of them.
 - The first pages are stored with the revision (`previews` links); later
   pages are rendered on demand from the stored PDF.
 - `list_documents` finds documents by `query` (title or client),
-  `template_id`, `status`, `client` or `created_by` (the token name of the
-  author), newest first.
+  `template_id`, `inline: true` (rendered with an inline template),
+  `status`, `client` or `created_by` (the token name of the author), newest
+  first.
 
 ## Optional AI review
 
@@ -165,4 +198,5 @@ template and document on the instance; the audit log records who did what.
 `create_template`, `update_template`, `archive_template`, `preview_template`,
 `upload_asset`, `list_assets`, `update_asset`, `delete_asset`,
 `validate_document`, `render_document`, `list_documents`, `get_document`,
-`review_document`, `publish_document`, `delete_document`, `restore_document`.
+`review_document`, `publish_document`, `delete_document`, `restore_document`,
+`save_inline_template`.

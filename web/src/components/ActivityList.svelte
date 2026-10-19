@@ -43,6 +43,7 @@
     if (d.pages) parts.push(d.pages === 1 ? '1 page' : `${d.pages} pages`);
     if (d.formats?.length) parts.push(d.formats.map((f) => f.toUpperCase()).join(' and '));
     if (d.unchanged) parts.push('unchanged');
+    if (d.template_id) parts.push('inline template');
     if (d.purge) parts.push('permanently');
     if (d.findings_errors) parts.push(`${d.findings_errors} errors`);
     return parts.join(', ');
