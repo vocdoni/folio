@@ -28,6 +28,8 @@ formatting.
 - When a template section declares the component (`"component": "budget"`),
   the div must sit under that section's heading (`misplaced_component`). A
   present section without its div gives the warning `component_missing`.
+  At most one template section declares a component: a second declaration is
+  a template error, so a component cannot repeat across sections.
 - `data.<name>` is required for every component used except `info`
   (`schema_violation` at `/data/<name>`), and must match the component schema
   (published by `get_capabilities.components`).
@@ -128,7 +130,9 @@ signature line, the name in bold, role and organization, and a date line.
 
 Markdown: `::: folio-info` + `:::`. No data. Renders a two-column table of the metadata fields `client`,
 `project`, `reference`, `date`, `author` and `version_label` that are
-present, with labels in the document language.
+present, with labels in the document language. It is not a general-purpose
+table: write any other table as a Markdown pipe table in the section text
+(section `component` empty). Use `info` once per document, or not at all.
 
 ## Labels
 

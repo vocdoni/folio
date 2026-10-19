@@ -99,7 +99,9 @@ without a `data_schema`.
 - `required` sections missing from a document fail validation
   (`missing_section`) and the error shows `hint`.
 - `component` ties a component to the section: its div must appear under that
-  heading, and the component must also be listed in `components`.
+  heading, and the component must also be listed in `components`. At most
+  one section declares a given component; other tables are Markdown pipe
+  tables in sections with an empty `component`.
 
 ## The sample
 

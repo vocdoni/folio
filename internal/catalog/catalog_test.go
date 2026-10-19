@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -292,6 +293,29 @@ func TestDryRunTemplateWritesNothing(t *testing.T) {
 	s.Renderer = wr
 	if _, _, err := s.DryRunTemplate(ctx, tmpl(), []model.Format{model.FormatPDF}); !hasCode(err, model.ErrValidationFailed) || len(wr.formats) != 1 {
 		t.Fatalf("warning policy: %v formats %v", err, wr.formats)
+	}
+}
+
+// TestTemplateRejectsAComponentInTwoSections: a component sits in one
+// section, so a second declaration is a finding at that section.
+func TestTemplateRejectsAComponentInTwoSections(t *testing.T) {
+	s := newService(t)
+	tp := tmpl()
+	tp.Components = []string{"budget", "info"}
+	tp.Sections = []model.Section{{Title: "Details", Component: "info"}, {Title: "Budget", Component: "budget"}, {Title: "Again", Component: "info"}}
+	fs := s.ValidateTemplate(tp)
+	var got []model.Finding
+	for _, f := range fs {
+		if f.Path == "/sections/2/component" {
+			got = append(got, f)
+		}
+	}
+	if len(got) != 1 || !strings.Contains(got[0].Message, `component info is already declared by section "Details"`) {
+		t.Fatalf("findings %+v", fs)
+	}
+	tp.Sections = tp.Sections[:2]
+	if model.HasErrors(s.ValidateTemplate(tp)) {
+		t.Fatalf("one section each must pass: %+v", s.ValidateTemplate(tp))
 	}
 }
 
