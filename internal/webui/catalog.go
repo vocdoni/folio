@@ -97,6 +97,7 @@ type ItemOut struct {
 	Version       int               `json:"version"`
 	LatestVersion int               `json:"latest_version"`
 	Archived      bool              `json:"archived"`
+	Inline        bool              `json:"inline"` // an inline template (id inline-…): read-only
 	Spec          json.RawMessage   `json:"spec"`
 	Versions      []catalog.Version `json:"versions"`
 	// CoreMetadataSchema is the metadata every document of this template
@@ -121,6 +122,7 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request, kind catalog.Ki
 	}
 	out := ItemOut{ID: it.ID, Version: it.Version, LatestVersion: it.LatestVersion, Archived: it.Archived, Spec: it.Spec, Versions: it.Versions}
 	if kind == catalog.KindTemplate {
+		out.Inline = model.IsInlineID(it.ID)
 		var t model.Template
 		if err := json.Unmarshal(it.Spec, &t); err == nil {
 			out.CoreMetadataSchema = validate.CoreMetadataSchema(t.Languages)
@@ -151,7 +153,8 @@ type TemplateSavedOut struct {
 	Files    []FileOut       `json:"files"` // sample render (expiring links)
 }
 
-func (s *Server) templateSaved(w http.ResponseWriter, r *http.Request, res *catalog.TemplateResult) {
+// savedOut is the API view of a saved template version.
+func (s *Server) savedOut(res *catalog.TemplateResult) TemplateSavedOut {
 	out := TemplateSavedOut{ID: res.ID, Version: res.Version, Warnings: res.Warnings, Files: []FileOut{}}
 	if out.Warnings == nil {
 		out.Warnings = []model.Finding{}
@@ -159,8 +162,12 @@ func (s *Server) templateSaved(w http.ResponseWriter, r *http.Request, res *cata
 	for _, f := range res.Files {
 		out.Files = append(out.Files, FileOut{Kind: f.Kind, Name: f.Name, MIME: f.MIME, Size: f.Size, Page: f.Page, URL: s.fileURL(f)})
 	}
+	return out
+}
+
+func (s *Server) templateSaved(w http.ResponseWriter, r *http.Request, res *catalog.TemplateResult) {
 	noteActivity(r, res.ID, activity.Detail{Version: res.Version})
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, s.savedOut(res))
 }
 
 func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {

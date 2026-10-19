@@ -10,6 +10,7 @@
   import Dialog from '../components/Dialog.svelte';
   import Icon from '../components/Icon.svelte';
   import Copy from '../components/Copy.svelte';
+  import SaveTemplateDialog from '../components/SaveTemplateDialog.svelte';
 
   let { id, onclose }: { id: string; onclose: (changed: boolean) => void } = $props();
   let doc = $state<DocumentDetail | null>(null);
@@ -19,6 +20,7 @@
   let changed = false;
   let confirm = $state<'' | 'trash' | 'purge'>('');
   let busy = $state(false);
+  let saving = $state(false);
   let el: HTMLDialogElement | undefined = $state();
 
   async function load() {
@@ -86,7 +88,7 @@
         <h2 id="doc-title">{doc?.title || (error ? 'Document' : 'Loading…')}</h2>
         {#if doc}
           <p class="muted small">
-            {doc.client || 'No client'}, template {doc.template_id}, revision {doc.revision.revision} of {doc.latest_revision}
+            {doc.client || 'No client'}, {doc.template_inline ? 'inline template' : `template ${doc.template_id}`}, revision {doc.revision.revision} of {doc.latest_revision}
           </p>
         {/if}
       </div>
@@ -137,6 +139,9 @@
               <button class="btn primary" onclick={publish} disabled={busy}><Icon name="check" />Publish revision {doc.revision.revision}</button>
             {/if}
             <a class="btn" href={href('/create?from=' + encodeURIComponent(doc.id))}>Revise</a>
+            {#if doc.template_inline}
+              <button class="btn" onclick={() => (saving = true)} disabled={busy}>Save as template</button>
+            {/if}
             <button class="btn danger" onclick={() => (confirm = 'trash')} disabled={busy}><Icon name="trash" />Move to trash</button>
           {:else}
             <button class="btn" onclick={restore} disabled={busy}><Icon name="restore" />Restore</button>
@@ -165,7 +170,7 @@
               <button class="rev" class:current={r.revision === doc.revision.revision} onclick={() => (revision = r.revision)}
                 aria-current={r.revision === doc.revision.revision ? 'true' : undefined}>
                 <span class="num">Revision {r.revision}</span>
-                <span class="muted small">{r.created_by}, {when(r.created_at)}, template {r.template.id} v{r.template.version}</span>
+                <span class="muted small">{r.created_by}, {when(r.created_at)}, {r.template.inline ? 'inline template' : `template ${r.template.id} v${r.template.version}`}</span>
               </button>
             </li>
           {/each}
@@ -175,6 +180,7 @@
   </div>
 </dialog>
 
+<SaveTemplateDialog bind:open={saving} documentId={id} onsaved={() => (changed = true)} />
 <Dialog bind:open={() => confirm === 'trash', (v) => { if (!v) confirm = ''; }} title="Move to the trash?" confirm="Move to trash" danger {busy} onconfirm={trash}>
   <p>Its download links stop working at once. You can restore it from the trash until it is purged automatically.</p>
 </Dialog>

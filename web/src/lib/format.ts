@@ -78,6 +78,7 @@ const actionNames: Record<string, string> = {
   upload_asset: 'Uploaded an image',
   list_assets: 'Listed images',
   delete_asset: 'Deleted an image',
+  save_inline_template: 'Saved an inline template as a template',
   'ui.login': 'Signed in',
   'ui.logout': 'Signed out',
   'ui.connection.reveal': 'Viewed the connection details',
@@ -88,6 +89,7 @@ const actionNames: Record<string, string> = {
   'ui.template.create': 'Created a template',
   'ui.template.update': 'Saved a template version',
   'ui.template.archive': 'Archived or restored a template',
+  'ui.template.save_inline': 'Saved an inline template as a template',
   'ui.brand.create': 'Created a brand',
   'ui.brand.update': 'Saved a brand version',
   'ui.brand.archive': 'Archived or restored a brand',
@@ -98,6 +100,12 @@ const actionNames: Record<string, string> = {
   'ui.ai.brand-suggest': 'Asked the assistant for a brand',
   'ui.ai.brand-logo': 'Saved a logo from a website',
 };
+
+/** isInline reports whether a template id names an inline template (sent
+ *  with the render call by an agent, never listed). */
+export function isInline(templateId: string): boolean {
+  return templateId.startsWith('inline-');
+}
 
 /** actionName is the plain-language label of a tool or UI action. */
 export function actionName(action: string): string {
