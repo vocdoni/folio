@@ -164,7 +164,7 @@ func (o *oidcClient) ready(parent context.Context) (*oauth2.Config, *oidc.IDToke
 		p, err := oidc.NewProvider(ctx, o.issuer)
 		if err != nil {
 			o.backoff = min(max(2*o.backoff, oidcBackoffMin), oidcBackoffMax)
-			o.retryAt = now.Add(o.backoff)
+			o.retryAt = o.now().Add(o.backoff) // from the failure, not the start: a timeout takes oidcHTTPTimeout
 			return nil, nil, err
 		}
 		o.provider, o.backoff = p, 0

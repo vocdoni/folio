@@ -404,6 +404,26 @@ func TestSSOIssuerDown(t *testing.T) {
 	}
 }
 
+// TestSSOSlowIssuerBackoff: the backoff runs from the end of a failed
+// discovery. A discovery that times out (the clock moves past the 2 s
+// backoff while it runs) still blocks the next attempt, so requests queued
+// behind it fail fast instead of each waiting for their own timeout.
+func TestSSOSlowIssuerBackoff(t *testing.T) {
+	f, idp, _ := ssoFixture(t, false, nil)
+	idp.down.Store(true)
+	stall := func() { f.clk.Add(oidcHTTPTimeout) }
+	idp.onDiscover.Store(&stall)
+	for range 2 {
+		w := f.do(http.MethodGet, "/ui/api/oidc/login", nil, nil)
+		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/ui/?error=sso_unavailable" {
+			t.Fatalf("provider down: %d %v", w.Code, w.Header())
+		}
+	}
+	if n := idp.discovered.Load(); n != 1 {
+		t.Fatalf("%d discovery requests within the backoff after a slow failure, want 1", n)
+	}
+}
+
 // TestSSORateLimit: both SSO routes share the sign-in limit with the
 // password and record nothing when refused.
 func TestSSORateLimit(t *testing.T) {

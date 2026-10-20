@@ -37,8 +37,9 @@ type fakeIdP struct {
 	claims func(map[string]any) // edits the default claims; nil = defaults
 	signer *rsa.PrivateKey      // nil = key (tests sign with another key to break signatures)
 
-	down       atomic.Bool  // discovery answers 503
-	discovered atomic.Int32 // discovery requests served or refused
+	down       atomic.Bool            // discovery answers 503
+	discovered atomic.Int32           // discovery requests served or refused
+	onDiscover atomic.Pointer[func()] // run before each discovery answer (nil: none)
 }
 
 type fakeGrant struct {
@@ -82,6 +83,9 @@ func newFakeIdP(t *testing.T, redirect string) *fakeIdP {
 
 func (p *fakeIdP) discovery(w http.ResponseWriter, _ *http.Request) {
 	p.discovered.Add(1)
+	if fn := p.onDiscover.Load(); fn != nil {
+		(*fn)()
+	}
 	if p.down.Load() {
 		http.Error(w, "down", http.StatusServiceUnavailable)
 		return
