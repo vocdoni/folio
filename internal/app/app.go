@@ -304,7 +304,7 @@ func New(ctx context.Context, cfg *config.Config, o Options) (a *App, err error)
 			return nil, err
 		}
 		ui, uiClose = ws, ws.Close
-		log.Info("web UI enabled", "path", "/ui/")
+		log.Info("web UI enabled", "path", "/ui/", "password", cfg.UIPassword != "", "sso_issuer", cfg.OIDCIssuer)
 	}
 	h, err := httpserver.NewHandler(httpserver.Options{
 		MCP: mcpserver.Handler(srv, cfg.MaxRequestBytes, log), Tokens: cfg.Tokens, InsecureNoAuth: cfg.InsecureNoAuth, UI: ui,

@@ -78,6 +78,7 @@ type Server struct {
 	secure   bool   // cookies get Secure (FOLIO_PUBLIC_URL is https)
 	sessions *sessions
 	limiter  *loginLimiter
+	oidc     *oidcClient // nil: SSO sign-in is off
 	static   *static
 	pages    *pageCache
 	previews *previewCache
@@ -117,6 +118,11 @@ func New(o Options) (*Server, error) {
 	s := &Server{o: o, origin: strings.ToLower(u.Scheme + "://" + u.Host), secure: u.Scheme == "https"}
 	s.sessions = newSessions(o.Config.UISessionTTL, maxSessions, o.Now, s.sessionEnded)
 	s.limiter = newLoginLimiter(o.Now)
+	if o.Config.OIDCIssuer != "" {
+		if s.oidc, err = newOIDCClient(o.Config, o.Now); err != nil {
+			return nil, err
+		}
+	}
 	s.static = newStatic(o.Dist)
 	s.pages = newPageCache(pageCacheBytes)
 	s.previews = newPreviewCache(o.Now)
@@ -163,6 +169,7 @@ func (s *Server) routes() http.Handler {
 		s.api(mux, "POST /ui/api/login", route{public: true, action: "ui.login"}, s.handleLogin)
 	}
 	s.api(mux, "POST /ui/api/logout", route{action: "ui.logout"}, s.handleLogout)
+	s.oidcRoutes(mux)
 	s.overviewRoutes(mux)
 	s.connectionRoutes(mux)
 	s.documentRoutes(mux)
