@@ -66,9 +66,33 @@ test.describe('signed out', () => {
   await page.getByLabel('Password').fill('not the password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('alert')).toContainText('not right');
+  await expect(page.getByRole('link', { name: 'Sign in with Example ID' })).toBeVisible();
   await axe(page, 'sign in');
   w.problems = w.problems.filter((p) => !p.includes('401')); // the failed login answers 401 by design
   expect(w.problems).toEqual([]);
+  });
+
+  test('a refused SSO sign-in says why and leaves a clean address', async ({ page }) => {
+    const w = await watch(page);
+    await page.goto('/ui/?error=domain');
+    await expect(page.getByRole('alert')).toContainText('may not sign in');
+    await expect(page).toHaveURL(/\/ui\/$/);
+    await expect(page.getByLabel('Password')).toBeVisible();
+    await axe(page, 'sign in refused');
+    expect(w.problems).toEqual([]);
+  });
+
+  // The provider is web/e2e/stub-oidc.mjs (another origin, so no watch()).
+  // Two sign-in attempts of the five a minute: login and callback.
+  test('signs in through the SSO provider and records the e-mail', async ({ page }) => {
+    await page.goto('/ui/activity');
+    await page.getByRole('link', { name: 'Sign in with Example ID' }).click();
+    await expect(page.getByRole('heading', { name: 'Activity', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/ui\/activity$/);
+    await expect(page.locator('.timeline .who', { hasText: 'e2e.user@example.test' }).first()).toBeVisible();
+    await page.goto('/ui/settings');
+    await expect(page.getByText('Password and SSO.')).toBeVisible();
+    await expect(page.getByText('e2e.user@example.test')).toBeVisible();
   });
 });
 
