@@ -44,6 +44,7 @@
     if (d.formats?.length) parts.push(d.formats.map((f) => f.toUpperCase()).join(' and '));
     if (d.unchanged) parts.push('unchanged');
     if (d.template_id) parts.push('inline template');
+    if (d.method === 'oidc') parts.push('with SSO');
     if (d.purge) parts.push('permanently');
     if (d.findings_errors) parts.push(`${d.findings_errors} errors`);
     return parts.join(', ');
@@ -62,7 +63,7 @@
             {@const t = target(r)}
             <li class="row" class:fresh={fresh.has(r.id)} class:error={r.outcome === 'error'}>
               <span class="mark" title={r.outcome === 'ok' ? 'Succeeded' : 'Failed'}></span>
-              <span class="who">{r.actor}</span>
+              <span class="who" title={r.actor}>{r.actor}</span>
               <span class="what">
                 {actionName(r.action)}
                 {#if t}{#if t.link}<a href={t.link}>{t.text}</a>{:else}<span>{t.text}</span>{/if}{/if}

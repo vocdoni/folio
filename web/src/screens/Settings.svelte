@@ -9,6 +9,7 @@
   import Icon from '../components/Icon.svelte';
   import PiConnect from '../components/PiConnect.svelte';
   import { MASK, claudeInstall, claudePlugin, examplePrompts, skillInstall, snippets } from '../lib/connect';
+  import { methodsText } from '../lib/signin';
 
   let stats = $state<Stats | null>(null);
   let conn = $state<Connection | null>(null);
@@ -62,6 +63,15 @@
               {session.ai.daily_remaining} of {session.ai.daily_limit} left today for everyone{session.ai.daily_resets_at ? ` (resets at ${clock(session.ai.daily_resets_at)})` : ''}.</span>
           {:else}
             Off. Set FOLIO_OPENROUTER_API_KEY on the server to draft templates, fill in details and suggest brands.
+          {/if}
+        </dd>
+        <dt>Sign-in</dt>
+        <dd>
+          {methodsText(session.info.methods)}
+          {#if session.info.method === 'oidc'}
+            <br /><span class="muted small">You signed in as <span class="code">{session.info.email}</span> through SSO.</span>
+          {:else if session.info.method === 'password'}
+            <br /><span class="muted small">You signed in with the password.</span>
           {/if}
         </dd>
         <dt>Stored</dt><dd>{stats ? `${stats.documents} documents, ${stats.trashed} in the trash, ${stats.templates} templates, ${stats.brands} brands, ${stats.assets} images` : '…'}</dd>
