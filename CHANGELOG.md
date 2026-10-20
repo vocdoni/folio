@@ -34,7 +34,7 @@ Planned as 0.1.0, the first release.
 - Public capability download links, `/healthz`, retention, blob garbage
   collection and SQLite snapshots.
 - Optional advisory AI visual reviewer through OpenRouter.
-- Web UI at `/ui` behind `FOLIO_UI_PASSWORD`: documents as page proofs with
+- Web UI at `/ui` behind `FOLIO_UI_PASSWORD` and/or SSO: documents as page proofs with
   PDF and DOCX downloads, create from Markdown, template studio with live
   proof, brands and images; server-side sessions, CSRF and Origin checks, rate
   limits and a strict CSP.
@@ -43,6 +43,17 @@ Planned as 0.1.0, the first release.
   with daily and per-session quotas.
 - Activity log and live feed of every MCP tool call and UI change (ids,
   names, outcomes, durations; retention `FOLIO_ACTIVITY_RETENTION`).
+- SSO sign-in to the web UI through any OpenID Connect provider, next to or
+  instead of the password (`FOLIO_OIDC_ISSUER`, `FOLIO_OIDC_CLIENT_ID`,
+  `FOLIO_OIDC_CLIENT_SECRET`, `FOLIO_OIDC_ALLOWED_DOMAINS`,
+  `FOLIO_OIDC_ALLOWED_EMAILS`, `FOLIO_OIDC_NAME`; redirect URL
+  `<FOLIO_PUBLIC_URL>/ui/api/oidc/callback`): authorization code flow with
+  PKCE, verified e-mails from the allowed domains or addresses only, provider
+  metadata fetched at the first sign-in so Folio starts while the provider
+  is down. Activity rows of SSO sessions name the e-mail as the actor
+  (actors now match `^[a-z0-9][a-z0-9._@+-]{0,253}$`), `GET /ui/api/session`
+  reports the sign-in methods, Settings shows them, and the session cookie
+  is `SameSite=Lax` so it survives the redirect back from the provider.
 - Docker image for linux/amd64 and linux/arm64, docker compose file and
   Railway guide.
 - Agent Skill (`skills/folio`) and Claude Code plugin (`.claude-plugin`).
