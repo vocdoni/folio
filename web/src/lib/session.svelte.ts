@@ -38,7 +38,7 @@ class SessionStore {
       await api.post('/logout');
     } finally {
       this.state = 'signed-out';
-      this.info = { authenticated: false };
+      this.info = { authenticated: false, methods: this.info.methods };
     }
   }
 

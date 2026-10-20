@@ -51,6 +51,9 @@ func (Secret) LogValue() slog.Value { return slog.StringValue("<redacted>") }
 // MinUIPasswordLen is the minimum length of FOLIO_UI_PASSWORD, in characters.
 const MinUIPasswordLen = 12
 
+// DefaultOIDCName is the label of the web UI's SSO sign-in button.
+const DefaultOIDCName = "Sign in with SSO"
+
 // DefaultTrustedProxies are the private and loopback ranges whose
 // X-Forwarded-For header is trusted for login rate limiting.
 var DefaultTrustedProxies = []netip.Prefix{
@@ -103,7 +106,7 @@ type Config struct {
 	OpenRouterBaseURL  string
 	ReviewModel        string
 	ReviewMaxPages     int
-	// Web UI (disabled when UIPassword is empty).
+	// Web UI (served when UIPassword or OIDCIssuer is set).
 	UIPassword           Secret
 	UISessionTTL         time.Duration
 	UIPreviewConcurrency int
@@ -112,18 +115,28 @@ type Config struct {
 	AIModel              string
 	AIDailyCalls         int
 	AISessionCalls       int // per session per hour
+	// Web UI sign-in through an OpenID Connect provider (off when OIDCIssuer is empty).
+	OIDCIssuer         string
+	OIDCClientID       string
+	OIDCClientSecret   Secret
+	OIDCAllowedDomains []string // lower-cased; an e-mail's part after the last @ must equal one
+	OIDCAllowedEmails  []string // lower-cased
+	OIDCName           string   // sign-in button label
 	// Inline templates (render_document.template).
 	DefaultBrand           string // FOLIO_DEFAULT_BRAND; "" = the only live brand
 	MaxInlineTemplateBytes int    // FOLIO_MAX_INLINE_TEMPLATE_BYTES: canonical inline spec
 	MaxLayoutTypstBytes    int    // FOLIO_MAX_LAYOUT_TYPST_BYTES: layout.typst of any template
 }
 
-// UIEnabled reports whether the web UI is served (FOLIO_UI_PASSWORD is set).
-func (c *Config) UIEnabled() bool { return c.UIPassword != "" }
+// UIEnabled reports whether the web UI is served: FOLIO_UI_PASSWORD or
+// FOLIO_OIDC_ISSUER (or both) is set.
+func (c *Config) UIEnabled() bool { return c.UIPassword != "" || c.OIDCIssuer != "" }
 
 var (
-	nameRE  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
-	tokenRE = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{32,256}$`)
+	nameRE   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	tokenRE  = regexp.MustCompile(`^[A-Za-z0-9._~+/=-]{32,256}$`)
+	domainRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+	emailRE  = regexp.MustCompile(`^[a-z0-9._+-]{1,64}@[a-z0-9.-]{1,189}$`)
 )
 
 // Load reads configuration through getenv (os.LookupEnv in production) and
@@ -231,10 +244,15 @@ func Load(getenv func(string) (string, bool), mode Mode) (*Config, error) {
 	}
 	if pw, ok := getenv("FOLIO_UI_PASSWORD"); ok && pw != "" { // not trimmed: spaces are part of a password
 		if utf8.RuneCountInString(pw) < MinUIPasswordLen || len(pw) > 1024 {
-			errs = append(errs, fmt.Errorf("FOLIO_UI_PASSWORD: must be %d to 1024 characters (leave it unset to disable the web UI)", MinUIPasswordLen))
+			errs = append(errs, fmt.Errorf("FOLIO_UI_PASSWORD: must be %d to 1024 characters (leave it unset to turn password sign-in off)", MinUIPasswordLen))
 		} else {
 			c.UIPassword = Secret(pw)
 		}
+	}
+	// The other FOLIO_OIDC_* variables are read only with an issuer, so
+	// unsetting FOLIO_OIDC_ISSUER alone turns SSO off.
+	if c.OIDCIssuer = str("FOLIO_OIDC_ISSUER", ""); c.OIDCIssuer != "" {
+		errs = append(errs, c.loadOIDC(str)...)
 	}
 	c.UISessionTTL = dur("FOLIO_UI_SESSION_TTL", 12*time.Hour, false)
 	c.UIPreviewConcurrency = num("FOLIO_UI_PREVIEW_CONCURRENCY", 1, 1)
@@ -298,6 +316,57 @@ func (c *Config) loadTokens(single, multi string) []error {
 		errs = append(errs, errors.New("no token configured: set FOLIO_TOKEN or FOLIO_TOKENS (or FOLIO_INSECURE_NO_AUTH=true for local development only)"))
 	}
 	return errs
+}
+
+// loadOIDC reads the FOLIO_OIDC_* variables once FOLIO_OIDC_ISSUER is set.
+func (c *Config) loadOIDC(str func(k, def string) string) []error {
+	var errs []error
+	u, err := url.Parse(c.OIDCIssuer)
+	plainOK := strings.HasPrefix(c.PublicURL, "http://") // local development
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+		(u.Scheme != "https" && (u.Scheme != "http" || !plainOK)) {
+		errs = append(errs, errors.New("FOLIO_OIDC_ISSUER: must be an absolute https URL without credentials, query or fragment (http only when FOLIO_PUBLIC_URL is http)"))
+	}
+	c.OIDCClientID = str("FOLIO_OIDC_CLIENT_ID", "")
+	if c.OIDCClientID == "" {
+		errs = append(errs, errors.New("FOLIO_OIDC_CLIENT_ID: required when FOLIO_OIDC_ISSUER is set"))
+	}
+	c.OIDCClientSecret = Secret(str("FOLIO_OIDC_CLIENT_SECRET", ""))
+	if c.OIDCClientSecret == "" {
+		errs = append(errs, errors.New("FOLIO_OIDC_CLIENT_SECRET: required when FOLIO_OIDC_ISSUER is set"))
+	}
+	var bad string
+	if c.OIDCAllowedDomains, bad = lowerList(str("FOLIO_OIDC_ALLOWED_DOMAINS", ""), domainRE); bad != "" {
+		errs = append(errs, fmt.Errorf("FOLIO_OIDC_ALLOWED_DOMAINS: %q is not a domain such as example.com (no wildcards, no @)", bad))
+	}
+	if c.OIDCAllowedEmails, bad = lowerList(str("FOLIO_OIDC_ALLOWED_EMAILS", ""), emailRE); bad != "" {
+		errs = append(errs, fmt.Errorf("FOLIO_OIDC_ALLOWED_EMAILS: %q is not an e-mail address", bad))
+	}
+	if len(c.OIDCAllowedDomains) == 0 && len(c.OIDCAllowedEmails) == 0 {
+		errs = append(errs, errors.New("FOLIO_OIDC_ALLOWED_DOMAINS or FOLIO_OIDC_ALLOWED_EMAILS: at least one is required when FOLIO_OIDC_ISSUER is set (otherwise anyone the provider knows could sign in)"))
+	}
+	c.OIDCName = str("FOLIO_OIDC_NAME", DefaultOIDCName)
+	if utf8.RuneCountInString(c.OIDCName) > 64 {
+		errs = append(errs, errors.New("FOLIO_OIDC_NAME: at most 64 characters"))
+	}
+	return errs
+}
+
+// lowerList splits a comma-separated list, trims and lower-cases the items
+// and returns the first item that does not match re ("" when all do).
+func lowerList(s string, re *regexp.Regexp) ([]string, string) {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		part = strings.ToLower(strings.TrimSpace(part))
+		if part == "" {
+			continue
+		}
+		if !re.MatchString(part) {
+			return nil, part
+		}
+		out = append(out, part)
+	}
+	return out, ""
 }
 
 // ParsePrefixes parses a comma-separated list of CIDR prefixes or single

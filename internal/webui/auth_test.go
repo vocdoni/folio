@@ -123,13 +123,14 @@ func errorCode(t *testing.T, w *httptest.ResponseRecorder) string {
 	return body.Error.Code
 }
 
-// TestDisabledWithoutPassword (B-AC1): no password → no UI handler (the
-// HTTP layer then serves 404 for /ui; see httpserver.TestUIMount).
+// TestDisabledWithoutPassword (B-AC1): no password and no issuer → no UI
+// handler (the HTTP layer then serves 404 for /ui; see httpserver.TestUIMount).
 func TestDisabledWithoutPassword(t *testing.T) {
 	cfg := testConfig("https://folio.example.test")
 	cfg.UIPassword = ""
-	if _, err := New(Options{Config: cfg, DB: &store.DB{}, Logger: slog.Default()}); err == nil {
-		t.Fatal("New must refuse to build a UI without a password")
+	_, err := New(Options{Config: cfg, DB: &store.DB{}, Logger: slog.Default()})
+	if err == nil || err.Error() != "webui: set FOLIO_UI_PASSWORD and/or FOLIO_OIDC_ISSUER" {
+		t.Fatalf("New must refuse to build a UI without a sign-in method: %v", err)
 	}
 }
 
@@ -159,7 +160,7 @@ func TestLoginSessionLogout(t *testing.T) {
 			c = x
 		}
 	}
-	if c == nil || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode || c.Path != "/ui" || len(c.Value) != 43 {
+	if c == nil || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode || c.Path != "/ui" || len(c.Value) != 43 {
 		t.Fatalf("cookie attributes: %+v", c)
 	}
 	f.cookie = c.Value
@@ -187,7 +188,7 @@ func TestSessionExpiryAndEviction(t *testing.T) {
 	ss := newSessions(time.Hour, 3, clk.Now, func(k string) { ended = append(ended, k) })
 	var cookies []string
 	for i := 0; i < 4; i++ {
-		_, c, err := ss.create()
+		_, c, err := ss.create(methodPassword, "")
 		if err != nil {
 			t.Fatal(err)
 		}

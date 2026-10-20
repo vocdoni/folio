@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Package webui serves Folio's password-protected web UI at /ui: the
-// embedded single-page app, its JSON API under /ui/api (session cookie,
-// CSRF header and Origin checks, login rate limits) and the live activity
-// stream. It uses the same services as the MCP tools. Without
-// FOLIO_UI_PASSWORD the package is not mounted at all.
+// Package webui serves Folio's web UI at /ui: the embedded single-page app,
+// its JSON API under /ui/api (session cookie, CSRF header and Origin checks,
+// login rate limits), sign-in with FOLIO_UI_PASSWORD and/or an OpenID
+// Connect provider, and the live activity stream. It uses the same services
+// as the MCP tools. Without a password or an issuer the package is not
+// mounted at all.
 package webui
 
 import (
@@ -29,7 +30,9 @@ import (
 	"github.com/vocdoni/folio/internal/store"
 )
 
-// Actor is the actor recorded for every UI action (activity and audit).
+// Actor is the author of every UI change in the catalog and document
+// history, and the activity actor of password sessions (SSO sessions record
+// their e-mail in the activity feed).
 const Actor = "ui"
 
 // MaxStreamsPerSession bounds live activity streams per session.
@@ -75,6 +78,7 @@ type Server struct {
 	secure   bool   // cookies get Secure (FOLIO_PUBLIC_URL is https)
 	sessions *sessions
 	limiter  *loginLimiter
+	oidc     *oidcClient // nil: SSO sign-in is off
 	static   *static
 	pages    *pageCache
 	previews *previewCache
@@ -95,7 +99,7 @@ func New(o Options) (*Server, error) {
 		return nil, errors.New("webui: Config, DB and Logger are required")
 	}
 	if !o.Config.UIEnabled() {
-		return nil, errors.New("webui: FOLIO_UI_PASSWORD is not set")
+		return nil, errors.New("webui: set FOLIO_UI_PASSWORD and/or FOLIO_OIDC_ISSUER")
 	}
 	if o.Now == nil {
 		o.Now = time.Now
@@ -114,6 +118,11 @@ func New(o Options) (*Server, error) {
 	s := &Server{o: o, origin: strings.ToLower(u.Scheme + "://" + u.Host), secure: u.Scheme == "https"}
 	s.sessions = newSessions(o.Config.UISessionTTL, maxSessions, o.Now, s.sessionEnded)
 	s.limiter = newLoginLimiter(o.Now)
+	if o.Config.OIDCIssuer != "" {
+		if s.oidc, err = newOIDCClient(o.Config, o.Now); err != nil {
+			return nil, err
+		}
+	}
 	s.static = newStatic(o.Dist)
 	s.pages = newPageCache(pageCacheBytes)
 	s.previews = newPreviewCache(o.Now)
@@ -156,8 +165,11 @@ func (s *Server) routes() http.Handler {
 		writeError(w, r, apiErr(http.StatusNotFound, "not_found", "no such API route"))
 	}))
 	s.api(mux, "GET /ui/api/session", route{public: true}, s.handleSession)
-	s.api(mux, "POST /ui/api/login", route{public: true, action: "ui.login"}, s.handleLogin)
+	if s.o.Config.UIPassword != "" { // otherwise POST /ui/api/login is an unknown route (404)
+		s.api(mux, "POST /ui/api/login", route{public: true, action: "ui.login"}, s.handleLogin)
+	}
 	s.api(mux, "POST /ui/api/logout", route{action: "ui.logout"}, s.handleLogout)
+	s.oidcRoutes(mux)
 	s.overviewRoutes(mux)
 	s.connectionRoutes(mux)
 	s.documentRoutes(mux)

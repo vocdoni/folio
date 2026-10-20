@@ -155,3 +155,75 @@ func TestInlineTemplateSettings(t *testing.T) {
 		t.Fatalf("bad size accepted: %v", err)
 	}
 }
+
+func TestOIDCVariables(t *testing.T) {
+	const secret = "fake-client-secret"
+	base := map[string]string{"FOLIO_PUBLIC_URL": "https://folio.example.com", "FOLIO_TOKEN": tok,
+		"FOLIO_OIDC_ISSUER": "https://id.example.com", "FOLIO_OIDC_CLIENT_ID": "folio", "FOLIO_OIDC_CLIENT_SECRET": secret,
+		"FOLIO_OIDC_ALLOWED_DOMAINS": " Example.COM , example.org", "FOLIO_OIDC_ALLOWED_EMAILS": "Guest.User@Partner.example"}
+	with := func(extra map[string]string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			if v == "" {
+				delete(m, k)
+			} else {
+				m[k] = v
+			}
+		}
+		return m
+	}
+	c, err := Load(env(base), ModeServe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.UIEnabled() || c.UIPassword != "" || c.OIDCIssuer != "https://id.example.com" || c.OIDCClientID != "folio" ||
+		string(c.OIDCClientSecret) != secret || c.OIDCName != DefaultOIDCName ||
+		strings.Join(c.OIDCAllowedDomains, " ") != "example.com example.org" || strings.Join(c.OIDCAllowedEmails, " ") != "guest.user@partner.example" {
+		t.Fatalf("%+v", c)
+	}
+	if s := fmt.Sprintf("%v %+v %#v", *c, *c, c.OIDCClientSecret); strings.Contains(s, secret) {
+		t.Fatal("the client secret was printed")
+	}
+	// Either list alone is enough; the label is configurable.
+	for _, m := range []map[string]string{
+		with(map[string]string{"FOLIO_OIDC_ALLOWED_EMAILS": ""}),
+		with(map[string]string{"FOLIO_OIDC_ALLOWED_DOMAINS": "", "FOLIO_OIDC_NAME": "Sign in with Example ID"}),
+	} {
+		if _, err := Load(env(m), ModeServe); err != nil {
+			t.Fatalf("%v: %v", m, err)
+		}
+	}
+	// http issuers only for a plain-http (local) Folio.
+	if _, err := Load(env(with(map[string]string{"FOLIO_PUBLIC_URL": "http://localhost:8080", "FOLIO_OIDC_ISSUER": "http://localhost:5556"})), ModeServe); err != nil {
+		t.Fatalf("local http issuer: %v", err)
+	}
+	for name, m := range map[string]map[string]string{
+		"http issuer":     with(map[string]string{"FOLIO_OIDC_ISSUER": "http://id.example.com"}),
+		"relative issuer": with(map[string]string{"FOLIO_OIDC_ISSUER": "id.example.com"}),
+		"issuer query":    with(map[string]string{"FOLIO_OIDC_ISSUER": "https://id.example.com/?tenant=a"}),
+		"wildcard domain": with(map[string]string{"FOLIO_OIDC_ALLOWED_DOMAINS": "*.example.com"}),
+		"at domain":       with(map[string]string{"FOLIO_OIDC_ALLOWED_DOMAINS": "@example.com"}),
+		"bad email":       with(map[string]string{"FOLIO_OIDC_ALLOWED_EMAILS": "not-an-email"}),
+		"long name":       with(map[string]string{"FOLIO_OIDC_NAME": strings.Repeat("x", 65)}),
+	} {
+		if _, err := Load(env(m), ModeServe); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	// Every problem at once.
+	_, err = Load(env(with(map[string]string{"FOLIO_OIDC_CLIENT_ID": "", "FOLIO_OIDC_CLIENT_SECRET": "",
+		"FOLIO_OIDC_ALLOWED_DOMAINS": "", "FOLIO_OIDC_ALLOWED_EMAILS": ""})), ModeServe)
+	for _, want := range []string{"FOLIO_OIDC_CLIENT_ID", "FOLIO_OIDC_CLIENT_SECRET", "FOLIO_OIDC_ALLOWED_DOMAINS or FOLIO_OIDC_ALLOWED_EMAILS"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in %v", want, err)
+		}
+	}
+	// Without an issuer the other variables are ignored (unsetting the issuer turns SSO off).
+	c, err = Load(env(with(map[string]string{"FOLIO_OIDC_ISSUER": "", "FOLIO_OIDC_ALLOWED_DOMAINS": "*"})), ModeServe)
+	if err != nil || c.UIEnabled() || c.OIDCClientID != "" || len(c.OIDCAllowedDomains) != 0 {
+		t.Fatalf("no issuer: %v %+v", err, c)
+	}
+}

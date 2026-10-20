@@ -10,11 +10,19 @@ export interface Finding {
   hint?: string;
 }
 
+export interface SignInMethods {
+  password: boolean;
+  oidc: { name: string } | null;
+}
+
 export interface Session {
   authenticated: boolean;
   expires_at?: string;
+  method?: 'password' | 'oidc';
+  email?: string;
   ai?: boolean;
   version?: string;
+  methods?: SignInMethods;
 }
 
 export interface Stats {
@@ -48,6 +56,7 @@ export interface ActivityDetail {
   findings_warnings?: number;
   template_id?: string;
   source_document?: string;
+  method?: 'password' | 'oidc';
 }
 
 export interface ActivityRow {

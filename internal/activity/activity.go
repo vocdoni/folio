@@ -48,6 +48,7 @@ type Detail struct {
 	FindingsWarnings int      `json:"findings_warnings,omitempty"`
 	TemplateID       string   `json:"template_id,omitempty"`     // inline template of a render (inline-<hash>)
 	SourceDocument   string   `json:"source_document,omitempty"` // document an inline template was saved from
+	Method           string   `json:"method,omitempty"`          // ui.login: password | oidc
 }
 
 // Row is one activity entry.
@@ -69,11 +70,14 @@ var (
 	idRE      = regexp.MustCompile(`^[A-Za-z0-9._:@-]{1,128}$`)
 	nameRE    = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	kindRE    = regexp.MustCompile(`^[a-z]{1,32}$`)
-	actorRE   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	actorRE   = regexp.MustCompile(`^[a-z0-9][a-z0-9._@+-]{0,253}$`) // a token name or a lower-cased e-mail
 	codeRE    = regexp.MustCompile(`^[a-z_]{1,32}$`)
 	inlineRE  = regexp.MustCompile(`^inline-[0-9a-f]{16}$`)
 	errBadRow = errors.New("activity: invalid row")
 )
+
+// ValidActor reports whether s is accepted as a row's actor.
+func ValidActor(s string) bool { return actorRE.MatchString(s) }
 
 // Sanitize bounds every field to its allowlist: identifiers that do not look
 // like ids are dropped and detail formats are reduced to pdf/docx. It fails
@@ -102,6 +106,9 @@ func Sanitize(r Row) (Row, error) {
 	}
 	if !idRE.MatchString(r.Detail.SourceDocument) {
 		r.Detail.SourceDocument = ""
+	}
+	if r.Detail.Method != "password" && r.Detail.Method != "oidc" {
+		r.Detail.Method = ""
 	}
 	return r, nil
 }

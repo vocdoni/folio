@@ -50,7 +50,8 @@ snapshots; 1 GB is plenty to start.
 | `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` | `90` |
 | `FOLIO_OPENROUTER_API_KEY` | optional: enables the AI reviewer and the web UI assistants |
 | `FOLIO_AI_MODEL` | optional: the assistants' OpenRouter model; the default `google/gemini-3.1-flash-lite` answers in seconds. If you set it on an older deployment to follow the reviewer's model, remove it or check that the model you name returns structured output quickly |
-| `FOLIO_UI_PASSWORD` | optional: enables the web UI at `/ui` (at least 12 characters); generate it with `openssl rand -base64 24` |
+| `FOLIO_UI_PASSWORD` | optional: enables password sign-in to the web UI at `/ui` (at least 12 characters); generate it with `openssl rand -base64 24` |
+| `FOLIO_OIDC_ISSUER`, `FOLIO_OIDC_CLIENT_ID`, `FOLIO_OIDC_CLIENT_SECRET`, `FOLIO_OIDC_ALLOWED_DOMAINS` and/or `FOLIO_OIDC_ALLOWED_EMAILS`, `FOLIO_OIDC_NAME` | optional: SSO sign-in to the web UI (see below) |
 | `FOLIO_RENDER_CONCURRENCY` | optional: about (service memory − 1 GiB) / 1 GiB; the default `2` suits 3 GB or more |
 
 Why the two Railway variables:
@@ -84,8 +85,35 @@ your shell history:
 openssl rand -base64 24 | tr -d '\n' | railway variable set --service folio --stdin FOLIO_UI_PASSWORD
 ```
 
-Without the variable `/ui` answers 404. Sessions live in memory, so a deploy
-signs everyone out.
+Without it (and without SSO) `/ui` answers 404. Sessions live in memory, so
+a deploy signs everyone out.
+
+### Optional: SSO sign-in
+
+To let people sign in with their account at an OpenID Connect provider,
+register Folio there as a web application with the redirect URL
+
+```text
+https://folio.example.com/ui/api/oidc/callback
+```
+
+(your `FOLIO_PUBLIC_URL` followed by `/ui/api/oidc/callback`, exactly), then
+set the variables, piping the client secret in:
+
+```sh
+railway variable set --service folio FOLIO_OIDC_ISSUER=https://id.example.com \
+  FOLIO_OIDC_CLIENT_ID=folio FOLIO_OIDC_ALLOWED_DOMAINS=example.com "FOLIO_OIDC_NAME=Sign in with Example ID"
+read -rs FOLIO_OIDC_SECRET && printf '%s' "$FOLIO_OIDC_SECRET" | railway variable set --service folio --stdin FOLIO_OIDC_CLIENT_SECRET; unset FOLIO_OIDC_SECRET
+```
+
+`FOLIO_OIDC_ALLOWED_DOMAINS` (exact e-mail domains) or
+`FOLIO_OIDC_ALLOWED_EMAILS` (addresses) is required; the README's
+[SSO sign-in](../README.md#sso-sign-in) section has the details. Keep
+`FOLIO_UI_PASSWORD` set while you try SSO: if the provider is down or
+misconfigured, the password still works and Folio still starts. Check that
+`https://folio.example.com/ui/api/session` lists `"oidc"` under `methods`,
+sign in once and look for your e-mail in Activity. To roll back, unset
+`FOLIO_OIDC_ISSUER`. Unset `FOLIO_UI_PASSWORD` later for SSO only.
 
 Railway's proxy connects to the container from a private address (100.64.0.0/10 or the
 fd00::/8 private network), which is inside Folio's default `FOLIO_TRUSTED_PROXIES`, so
@@ -175,7 +203,10 @@ or it will redeploy `latest`.
 | Deploy never becomes healthy | check the logs for the tool self-test; use the published image (it ships the right pandoc and typst) |
 | Renders fail with `busy` | raise `FOLIO_RENDER_CONCURRENCY` (and the service memory) or `FOLIO_RENDER_QUEUE` |
 | Download links point to the wrong host | fix `FOLIO_PUBLIC_URL` |
-| `/ui` answers 404 | `FOLIO_UI_PASSWORD` is not set (or shorter than 12 characters: the deploy log says so) |
+| `/ui` answers 404 | neither `FOLIO_UI_PASSWORD` nor `FOLIO_OIDC_ISSUER` is set (or the password is shorter than 12 characters: the deploy log says so) |
+| The SSO button says "SSO is unavailable right now" | Folio cannot read the provider's metadata at `FOLIO_OIDC_ISSUER/.well-known/openid-configuration`; the log says why (`web UI SSO: provider unavailable`) |
+| The provider reports a redirect URI mismatch | register `<FOLIO_PUBLIC_URL>/ui/api/oidc/callback` exactly at the provider |
+| SSO comes back with "This account may not sign in" | the e-mail is unverified or outside `FOLIO_OIDC_ALLOWED_DOMAINS` / `FOLIO_OIDC_ALLOWED_EMAILS` (the log has the domain) |
 | Everyone is locked out of sign-in after a few wrong attempts | the proxy's address is not in `FOLIO_TRUSTED_PROXIES` (see step 3) |
 | The UI signs everyone out after a deploy | expected: sessions live in memory |
 | Long renders cut off during deploys | raise `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` to at least `FOLIO_RENDER_TIMEOUT` + 20 s |

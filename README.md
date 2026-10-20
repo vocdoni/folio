@@ -178,7 +178,13 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_REVIEW_MODEL` | `google/gemma-4-31b-it` | OpenRouter model used by the reviewer |
 | `FOLIO_REVIEW_MAX_PAGES` | `20` | pages per review call |
 | `FOLIO_OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API root; change it only for tests or an outbound proxy |
-| `FOLIO_UI_PASSWORD` | — | enables the [web UI](#web-ui) at `/ui` (at least 12 characters); unset, `/ui` returns 404 |
+| `FOLIO_UI_PASSWORD` | — | enables password sign-in to the [web UI](#web-ui) at `/ui` (at least 12 characters); with neither this nor `FOLIO_OIDC_ISSUER`, `/ui` returns 404 |
+| `FOLIO_OIDC_ISSUER` | — | enables [SSO sign-in](#sso-sign-in) to the web UI through this OpenID Connect provider (an https URL; http only when `FOLIO_PUBLIC_URL` is http); the other `FOLIO_OIDC_*` variables are read only when it is set |
+| `FOLIO_OIDC_CLIENT_ID` | required with an issuer | client id registered at the provider, with the redirect URL `<FOLIO_PUBLIC_URL>/ui/api/oidc/callback` |
+| `FOLIO_OIDC_CLIENT_SECRET` | required with an issuer | that client's secret |
+| `FOLIO_OIDC_ALLOWED_DOMAINS` | — | comma-separated e-mail domains admitted (exact match on the part after the last `@`, no wildcards); this or `FOLIO_OIDC_ALLOWED_EMAILS` is required with an issuer |
+| `FOLIO_OIDC_ALLOWED_EMAILS` | — | comma-separated e-mail addresses admitted, in addition to the domains |
+| `FOLIO_OIDC_NAME` | `Sign in with SSO` | label of the SSO button on the sign-in screen (at most 64 characters) |
 | `FOLIO_UI_SESSION_TTL` | `12h` | web UI sessions expire after this much inactivity |
 | `FOLIO_UI_PREVIEW_CONCURRENCY` | `1` | render slots for web UI previews and example-file conversion (separate from `FOLIO_RENDER_CONCURRENCY`) |
 | `FOLIO_TRUSTED_PROXIES` | private and loopback ranges | comma-separated CIDRs whose `X-Forwarded-For` is trusted for login rate limiting; `none` trusts no proxy |
@@ -343,10 +349,13 @@ To build a brand from a website, use Brands in the web UI.
 
 ## Web UI
 
-Set `FOLIO_UI_PASSWORD` (at least 12 characters) and open
-`https://folio.example.com/ui/` (the root redirects there). Without the
-variable `/ui` does not exist. Everyone signs in with that one password;
-there are no user accounts.
+Set `FOLIO_UI_PASSWORD` (at least 12 characters), `FOLIO_OIDC_ISSUER` (see
+[SSO sign-in](#sso-sign-in)) or both, and open
+`https://folio.example.com/ui/` (the root redirects there). With neither
+variable `/ui` does not exist. The password is shared by everyone who knows
+it; with SSO, people sign in with their own account at your identity
+provider and the activity feed names them by e-mail. Folio has no user
+accounts or roles: everyone signed in can do everything.
 
 - **Overview and Activity.** Every MCP tool call (reads included) and every
   change made in the UI, live: who, what, on which item, how it ended and
@@ -366,9 +375,10 @@ there are no user accounts.
   stay available for experts.
 - **Brands and images.** Colour pickers, specimens of the bundled fonts,
   logo upload, header and footer, with a live specimen page.
-- **Settings.** Version, sandbox level, assistant status, the access token
-  (hidden until you press Show; each view is recorded in Activity without the
-  token, so anyone with the UI password can read the token) and the commands
+- **Settings.** Version, sandbox level, sign-in methods, assistant status,
+  the access token (hidden until you press Show; each view is recorded in
+  Activity without the token, so anyone who can sign in can read the token)
+  and the commands
   that connect an agent to this instance, filled in with it. It also lists
   example prompts.
 
@@ -405,15 +415,77 @@ and reported as a malformed answer instead of waiting for the time limit.
 Each call is logged as an `ai call` record with the model, provider,
 latency, token counts and outcome; never the content or the key.
 
+### SSO sign-in
+
+Folio signs people in through any OpenID Connect provider (Google, Microsoft
+Entra ID, Okta, Keycloak, Authentik, Dex and others), next to the password or
+instead of it. Register Folio at the provider as a web application
+(confidential client, authorization code flow) with this redirect URL,
+`FOLIO_PUBLIC_URL` followed by `/ui/api/oidc/callback`:
+
+```text
+https://folio.example.com/ui/api/oidc/callback
+```
+
+Then set the variables. With Google as the provider, for example, admitting
+everyone with an `example.com` address and one outside guest:
+
+```sh
+FOLIO_OIDC_ISSUER=https://accounts.google.com
+FOLIO_OIDC_CLIENT_ID=<client id from the provider>
+FOLIO_OIDC_CLIENT_SECRET=<client secret from the provider>
+FOLIO_OIDC_ALLOWED_DOMAINS=example.com
+FOLIO_OIDC_ALLOWED_EMAILS=guest@partner.example
+FOLIO_OIDC_NAME="Sign in with Google"
+```
+
+The sign-in screen shows a button with that label (and the password form
+only when `FOLIO_UI_PASSWORD` is set). Folio uses the authorization code
+flow with PKCE (S256) and the scopes `openid email profile`, and admits a
+sign-in only when the ID token is signed with the provider's published keys,
+names this client as its audience, has not expired (60 seconds of clock skew
+allowed), carries the nonce Folio sent, has `email_verified` set to true, and
+its lower-cased e-mail is in `FOLIO_OIDC_ALLOWED_EMAILS` or has a domain (the
+part after the last `@`, matched exactly: no subdomains or wildcards) in
+`FOLIO_OIDC_ALLOWED_DOMAINS`. One of the two lists is required, because a
+public provider authenticates anyone who has an account there.
+
+- **Provider down.** Folio fetches the provider's metadata at the first SSO
+  sign-in, not at startup, so it starts while the provider is unreachable;
+  the password keeps working and the button answers "SSO is unavailable
+  right now" (Folio tries again after a short, growing pause).
+- **Sessions.** An SSO sign-in opens the same server-side session as the
+  password (in memory, ended by `FOLIO_UI_SESSION_TTL` of inactivity or a
+  restart). Folio keeps no provider tokens. Signing out of Folio does not
+  sign you out of the provider, and disabling an account at the provider
+  stops new sign-ins but not a session already open.
+- **Activity.** An SSO sign-in is recorded as `ui.login` by the e-mail, and
+  so is every later change made in that session; password sessions are
+  recorded as `ui`. Documents, templates and brands still name `ui` as the
+  author of UI changes.
+- **Refusals.** The sign-in screen says what went wrong (account not allowed,
+  attempt expired, provider refused, answer not verifiable, too many
+  attempts); the reason is in the server log, never on the screen.
+- **SSO only.** Unset `FOLIO_UI_PASSWORD`: the password form disappears and
+  `POST /ui/api/login` answers 404. Unset `FOLIO_OIDC_ISSUER` to turn SSO
+  off; the other `FOLIO_OIDC_*` variables are then ignored.
+
 ### Security
 
-- The password is compared in constant time; sign-in attempts are limited
-  to five a minute per client address and sixty a minute in total. Behind a
-  proxy, `X-Forwarded-For` is trusted only from `FOLIO_TRUSTED_PROXIES`.
+- The password is compared in constant time; sign-in attempts (password
+  and SSO alike, where an SSO sign-in counts twice: start and return) are
+  limited to five a minute per client address and sixty a minute in total.
+  Behind a proxy, `X-Forwarded-For` is trusted only from
+  `FOLIO_TRUSTED_PROXIES`.
 - Sessions are random 256-bit ids kept in memory (a restart signs everyone
-  out), in an `HttpOnly`, `SameSite=Strict` cookie scoped to `/ui` and
-  `Secure` when `FOLIO_PUBLIC_URL` is https; they expire after
-  `FOLIO_UI_SESSION_TTL` of inactivity.
+  out), in an `HttpOnly`, `SameSite=Lax` cookie scoped to `/ui` and `Secure`
+  when `FOLIO_PUBLIC_URL` is https; they expire after
+  `FOLIO_UI_SESSION_TTL` of inactivity. (Lax, because browsers drop a Strict
+  cookie on the redirect back from the SSO provider.)
+- An SSO sign-in in progress keeps its state, nonce and PKCE verifier in a
+  ten-minute `folio_oidc` cookie encrypted with a key that exists only in
+  the server's memory: a sign-in started before a restart (or on another
+  instance) fails with "the sign-in expired"; start it again.
 - Every change needs the `X-Folio-UI` header and a same-origin `Origin`.
   Pages carry a strict Content-Security-Policy (`'self'` only, no inline
   script or style, no framing). The UI loads nothing from other sites.
@@ -742,10 +814,12 @@ schedules. Folio now lays out exactly what you send:
   least 32 characters, compared in constant time and never logged. All
   tokens have the same rights: a token holder can read and change everything
   on the instance. Rotate a token by changing the variable and restarting.
-  Folio has no OAuth, users or roles.
-- **Web UI.** Off unless `FOLIO_UI_PASSWORD` is set; one shared password,
-  rate-limited sign-in, server-side sessions, CSRF header and Origin
-  checks, strict CSP (see [Web UI](#web-ui)).
+  MCP access has no OAuth, users or roles.
+- **Web UI.** Off unless `FOLIO_UI_PASSWORD` or `FOLIO_OIDC_ISSUER` is set;
+  one shared password and/or SSO through an OpenID Connect provider
+  (verified e-mails from allowed domains or addresses only), rate-limited
+  sign-in, server-side sessions, CSRF header and Origin checks, strict CSP
+  (see [Web UI](#web-ui)).
 - **Download links are capabilities.** `/f/<id>/<name>` needs no token: the
   122-bit random id is the only secret. Anyone holding a link can download
   that file. Links are not indexable (`X-Robots-Tag`, `robots.txt`), are not
