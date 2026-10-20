@@ -28,17 +28,17 @@ type ConnectionOut struct {
 	SkillURL string            `json:"skill_url"`
 }
 
-// handleConnection reveals the MCP tokens to a signed-in UI user (the UI
-// password holder is trusted with them). Every call leaves an activity row
+// handleConnection reveals the MCP tokens to a signed-in UI user (anyone who
+// can sign in is trusted with them). Every call leaves an activity row
 // without the token.
-func (s *Server) handleConnection(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleConnection(w http.ResponseWriter, r *http.Request) {
 	base := strings.TrimRight(s.o.Config.PublicURL, "/")
 	out := ConnectionOut{MCPURL: base + "/mcp", SkillURL: base + "/skills/folio/SKILL.md", Tokens: []ConnectionToken{}}
 	for _, t := range s.o.Config.Tokens {
 		out.Tokens = append(out.Tokens, ConnectionToken{Name: t.Name, Token: t.Value})
 	}
 	if s.o.Activity != nil {
-		s.o.Activity.Record(activity.Row{TS: s.o.Now(), Source: activity.SourceUI, Actor: Actor, Action: "ui.connection.reveal",
+		s.o.Activity.Record(activity.Row{TS: s.o.Now(), Source: activity.SourceUI, Actor: sessionOf(r).actor(), Action: "ui.connection.reveal",
 			Outcome: activity.OutcomeOK})
 	}
 	writeJSON(w, http.StatusOK, out)

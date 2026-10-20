@@ -185,6 +185,7 @@ type noteKey struct{}
 type note struct {
 	targetID string
 	detail   activity.Detail
+	actor    string // the session's actor ("" before the session check)
 }
 
 // noteActivity sets the activity target id ("" keeps the path id) and detail
@@ -239,6 +240,7 @@ func (s *Server) api(mux *http.ServeMux, pattern string, rt route, h http.Handle
 				return
 			}
 			r = r.WithContext(withSession(r.Context(), ss))
+			n.actor = ss.actor()
 		}
 		h(rw, r)
 	}))
@@ -256,6 +258,10 @@ func (s *Server) recordUI(rt route, n *note, rw *recWriter, start time.Time) {
 	if n.targetID == "" {
 		kind = ""
 	}
-	s.o.Activity.Record(activity.Row{TS: s.o.Now(), Source: activity.SourceUI, Actor: Actor, Action: rt.action, TargetKind: kind,
+	actor := n.actor
+	if actor == "" {
+		actor = Actor // public routes (password sign-in)
+	}
+	s.o.Activity.Record(activity.Row{TS: s.o.Now(), Source: activity.SourceUI, Actor: actor, Action: rt.action, TargetKind: kind,
 		TargetID: n.targetID, Outcome: outcome, ErrorCode: code, DurationMS: s.o.Now().Sub(start).Milliseconds(), Detail: n.detail})
 }
