@@ -103,7 +103,7 @@ set the variables, piping the client secret in:
 ```sh
 railway variable set --service folio FOLIO_OIDC_ISSUER=https://id.example.com \
   FOLIO_OIDC_CLIENT_ID=folio FOLIO_OIDC_ALLOWED_DOMAINS=example.com "FOLIO_OIDC_NAME=Sign in with Example ID"
-printf '%s' '<client secret>' | railway variable set --service folio --stdin FOLIO_OIDC_CLIENT_SECRET
+read -rs FOLIO_OIDC_SECRET && printf '%s' "$FOLIO_OIDC_SECRET" | railway variable set --service folio --stdin FOLIO_OIDC_CLIENT_SECRET; unset FOLIO_OIDC_SECRET
 ```
 
 `FOLIO_OIDC_ALLOWED_DOMAINS` (exact e-mail domains) or
