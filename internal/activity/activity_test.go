@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,5 +206,26 @@ func TestSanitizeDetailIDs(t *testing.T) {
 		Detail: Detail{TemplateID: "proposal", SourceDocument: "<b>x</b>"}})
 	if r.Detail.TemplateID != "" || r.Detail.SourceDocument != "" {
 		t.Fatalf("not sanitised: %+v", r.Detail)
+	}
+}
+
+// TestSanitizeEmailActorsAndMethod: web UI sessions signed in through SSO
+// record the lower-cased e-mail as the actor; the sign-in method is an enum.
+func TestSanitizeEmailActorsAndMethod(t *testing.T) {
+	for _, actor := range []string{"ui", "alice", "jane.doe+folio@example.com", "a@b.example", strings.Repeat("a", 254)} {
+		if _, err := Sanitize(Row{Source: SourceUI, Actor: actor, Action: "ui.login", Outcome: OutcomeOK}); err != nil || !ValidActor(actor) {
+			t.Errorf("refused actor %q: %v", actor, err)
+		}
+	}
+	for _, actor := range []string{"", "Jane@example.com", ".dot@example.com", "jane doe@example.com", "jane<script>@example.com", strings.Repeat("a", 255)} {
+		if _, err := Sanitize(Row{Source: SourceUI, Actor: actor, Action: "ui.login", Outcome: OutcomeOK}); err == nil || ValidActor(actor) {
+			t.Errorf("accepted actor %q", actor)
+		}
+	}
+	for in, want := range map[string]string{"oidc": "oidc", "password": "password", "magic": "", "": ""} {
+		r, err := Sanitize(Row{Source: SourceUI, Actor: "ui", Action: "ui.login", Outcome: OutcomeOK, Detail: Detail{Method: in}})
+		if err != nil || r.Detail.Method != want {
+			t.Errorf("method %q: got %q (%v)", in, r.Detail.Method, err)
+		}
 	}
 }
