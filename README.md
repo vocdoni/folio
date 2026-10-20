@@ -178,7 +178,13 @@ a message listing every problem when the configuration is invalid.
 | `FOLIO_REVIEW_MODEL` | `google/gemma-4-31b-it` | OpenRouter model used by the reviewer |
 | `FOLIO_REVIEW_MAX_PAGES` | `20` | pages per review call |
 | `FOLIO_OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API root; change it only for tests or an outbound proxy |
-| `FOLIO_UI_PASSWORD` | — | enables the [web UI](#web-ui) at `/ui` (at least 12 characters); unset, `/ui` returns 404 |
+| `FOLIO_UI_PASSWORD` | — | enables password sign-in to the [web UI](#web-ui) at `/ui` (at least 12 characters); with neither this nor `FOLIO_OIDC_ISSUER`, `/ui` returns 404 |
+| `FOLIO_OIDC_ISSUER` | — | enables [SSO sign-in](#sso-sign-in) to the web UI through this OpenID Connect provider (an https URL; http only when `FOLIO_PUBLIC_URL` is http); the other `FOLIO_OIDC_*` variables are read only when it is set |
+| `FOLIO_OIDC_CLIENT_ID` | required with an issuer | client id registered at the provider, with the redirect URL `<FOLIO_PUBLIC_URL>/ui/api/oidc/callback` |
+| `FOLIO_OIDC_CLIENT_SECRET` | required with an issuer | that client's secret |
+| `FOLIO_OIDC_ALLOWED_DOMAINS` | — | comma-separated e-mail domains admitted (exact match on the part after the last `@`, no wildcards); this or `FOLIO_OIDC_ALLOWED_EMAILS` is required with an issuer |
+| `FOLIO_OIDC_ALLOWED_EMAILS` | — | comma-separated e-mail addresses admitted, in addition to the domains |
+| `FOLIO_OIDC_NAME` | `Sign in with SSO` | label of the SSO button on the sign-in screen (at most 64 characters) |
 | `FOLIO_UI_SESSION_TTL` | `12h` | web UI sessions expire after this much inactivity |
 | `FOLIO_UI_PREVIEW_CONCURRENCY` | `1` | render slots for web UI previews and example-file conversion (separate from `FOLIO_RENDER_CONCURRENCY`) |
 | `FOLIO_TRUSTED_PROXIES` | private and loopback ranges | comma-separated CIDRs whose `X-Forwarded-For` is trusted for login rate limiting; `none` trusts no proxy |
