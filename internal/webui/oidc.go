@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -56,12 +58,46 @@ var errOIDCBackoff = errors.New("webui: SSO provider discovery failed recently; 
 
 // safeReturnTo returns v when it is a relative path below /ui that is not
 // an API route and not unreasonably long (the flow cookie must stay small),
-// else "/".
+// else "/". Backslashes, control characters and "." or ".." segments are
+// refused: http.Redirect cleans the path, so "/../\host" would leave /ui
+// and become "/\host", which browsers resolve as //host.
 func safeReturnTo(v string) string {
-	if len(v) > 2048 || !returnToRE.MatchString(v) || strings.HasPrefix(v, "/api/") {
+	p, _, _ := strings.Cut(v, "?")
+	if len(v) > 2048 || !returnToRE.MatchString(v) || strings.HasPrefix(v, "/api/") ||
+		strings.ContainsFunc(v, func(r rune) bool { return r == '\\' || r < 0x20 || r == 0x7f }) ||
+		slices.ContainsFunc(strings.Split(p, "/"), func(seg string) bool { return seg == "." || seg == ".." }) {
 		return "/"
 	}
 	return v
+}
+
+// ssoHome is where a sign-in lands when return_to is refused.
+const ssoHome = "/ui/"
+
+// ssoLocation is the redirect target after a successful SSO sign-in:
+// "/ui" + safeReturnTo(v), checked again as http.Redirect and a browser
+// will see it. The path is checked raw and percent-decoded (browsers treat
+// "%2e%2e" as ".."): no backslash, no control character, no "." or ".."
+// segment, and path.Clean must keep it below /ui and outside /ui/api
+// (the router decodes "%61pi" to "api"). So the Location can never start
+// with "//" or "/\" (a network-path reference to another host), whatever
+// cleaning happens on the way.
+func ssoLocation(v string) string {
+	loc := "/ui" + safeReturnTo(v)
+	p, _, _ := strings.Cut(loc, "?")
+	dec, err := url.PathUnescape(p)
+	if err != nil {
+		return ssoHome
+	}
+	for _, s := range []string{p, dec} {
+		c := path.Clean(s)
+		if strings.ContainsFunc(s, func(r rune) bool { return r == '\\' || r < 0x20 || r == 0x7f }) ||
+			slices.ContainsFunc(strings.Split(s, "/"), func(seg string) bool { return seg == "." || seg == ".." }) ||
+			(c != "/ui" && !strings.HasPrefix(c, "/ui/")) || strings.HasPrefix(c+"/", "/ui/api/") {
+			return ssoHome
+		}
+	}
+	return loc
 }
 
 // oidcFlow is the folio_oidc payload: one sign-in in progress.
@@ -329,7 +365,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		s.o.Activity.Record(activity.Row{TS: s.o.Now(), Source: activity.SourceUI, Actor: ss.actor(), Action: "ui.login",
 			Outcome: activity.OutcomeOK, DurationMS: s.o.Now().Sub(start).Milliseconds(), Detail: activity.Detail{Method: methodOIDC}})
 	}
-	http.Redirect(w, r, "/ui"+safeReturnTo(f.ReturnTo), http.StatusSeeOther)
+	http.Redirect(w, r, ssoLocation(f.ReturnTo), http.StatusSeeOther)
 }
 
 // admits reports whether a lower-cased e-mail is in FOLIO_OIDC_ALLOWED_EMAILS
