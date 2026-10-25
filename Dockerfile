@@ -12,7 +12,7 @@
 # the BuildKit frontend is pinned by digest in the syntax line.
 
 # ---- fetch: pinned pandoc and typst for the target architecture ----------
-FROM --platform=$BUILDPLATFORM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f AS fetch
+FROM --platform=$BUILDPLATFORM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS fetch
 ARG TARGETARCH
 ARG PANDOC_VERSION=3.12.1
 ARG PANDOC_SHA256_AMD64=d0c90410e90204c9ca83b8539fac5c7aed01fd537207e4585849f8abc5df20b8
@@ -66,7 +66,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -trimpath -ldflags "-s -w -X main.buildVersion=${VERSION}" -o /out/folio ./cmd/folio
 
 # ---- runtime ---------------------------------------------------------------
-FROM debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
+FROM debian:trixie-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad
 ARG VERSION=devel
 LABEL org.opencontainers.image.title="folio" \
       org.opencontainers.image.description="Branded PDF and DOCX documents for AI agents over MCP" \
